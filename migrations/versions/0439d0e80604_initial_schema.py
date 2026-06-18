@@ -21,7 +21,7 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
         sa.Column("nome", sa.String(length=120), nullable=False),
         sa.Column("ordem", sa.Integer(), nullable=False),
-        sa.Column("aberta", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("aberta", sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column("abertura", sa.DateTime(timezone=True), nullable=True),
         sa.Column("fechamento", sa.DateTime(timezone=True), nullable=True),
     )
@@ -33,8 +33,8 @@ def upgrade() -> None:
         sa.Column("nome", sa.String(length=120), nullable=False),
         sa.Column("username", sa.String(length=80), nullable=False),
         sa.Column("senha_hash", sa.String(length=255), nullable=False),
-        sa.Column("is_admin", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-        sa.Column("ativo", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_admin", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("ativo", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.UniqueConstraint("username", name="uq_usuarios_username"),
     )
     op.create_index(op.f("ix_usuarios_username"), "usuarios", ["username"], unique=True)

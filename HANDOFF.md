@@ -46,7 +46,8 @@ Este documento resume o estado atual do projeto para retomada por outra IA ou po
 - `Jinja2Templates.TemplateResponse` requer `request` como primeiro argumento nesta versão do FastAPI/Starlette.
 - O smoke test depende de `httpx2` no ambiente de testes.
 - **Produção:** `create_app()` recusa subir se `DEBUG=0` e `SECRET_KEY` for o padrão/vazio. Cookie de sessão com `SameSite=lax` + `Secure` controlado por `SESSION_HTTPS_ONLY`. Env vars: `SECRET_KEY`, `DEBUG`, `DATABASE_URL`, `SESSION_HTTPS_ONLY` (ver `DEPLOY.md` / `.env.example`).
-- Testes: `tests/conftest.py` define `SECRET_KEY` para a suíte não esbarrar no guard de produção. Suíte atual: **101 testes**.
+- Testes: `tests/conftest.py` define `SECRET_KEY` para a suíte não esbarrar no guard de produção. Suíte atual: **109 testes**.
+- **Migrações portáveis (SQLite ↔ Postgres):** defaults booleanos em migração devem usar `sa.false()`/`sa.true()` — NUNCA `sa.text("0")`/`sa.text("1")` (o `0`/`1` quebra no Postgres: "column is boolean but default is integer"). A migração inicial foi corrigida por isso ao subir na Neon. `DATABASE_URL` é normalizado para `postgresql+psycopg://` no app e no `migrations/env.py`.
 
 ## Comandos de Trabalho
 
