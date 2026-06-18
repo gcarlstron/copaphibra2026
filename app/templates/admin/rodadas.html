@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+
+    {# ── Cabeçalho ──────────────────────────────────────────────── #}
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Administração</p>
+            <h2>Rodadas</h2>
+        </div>
+        <div class="section-head-actions">
+            <a href="/admin/jogos" class="btn-secondary">Jogos</a>
+            <a href="/admin/usuarios" class="btn-secondary">Usuários</a>
+            <a href="/" class="btn-secondary">Voltar ao dashboard</a>
+        </div>
+    </div>
+
+    {# ── Erro de validação (criar rodada) ────────────────────────── #}
+    {% if erro %}
+    <div class="alert-banner" role="alert">
+        <div class="alert-banner-icon" aria-hidden="true">!</div>
+        <div class="alert-banner-body">
+            <strong>Erro ao salvar</strong>
+            <p style="margin:0;font-size:0.9rem;color:var(--text)">{{ erro }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Tabela de rodadas ───────────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>Rodadas cadastradas</h3>
+                <p class="muted">Clique em "Editar" para alterar a janela de palpites</p>
+            </div>
+            <span class="status-pill">{{ rodadas | length }} rodada{{ 's' if rodadas | length != 1 else '' }}</span>
+        </header>
+
+        {% if rodadas %}
+        <div class="table-wrap">
+            <table class="ranking-table admin-table">
+                <thead>
+                    <tr>
+                        <th style="width:48px">#</th>
+                        <th>Nome</th>
+                        <th style="width:80px">Jogos</th>
+                        <th style="width:100px">Estado</th>
+                        <th>Abertura</th>
+                        <th>Fechamento</th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in rodadas %}
+                    <tr class="ranking-row" id="rodada-row-{{ r.id }}">
+                        <td class="col-pos">{{ r.ordem }}</td>
+                        <td><strong>{{ r.nome }}</strong></td>
+                        <td style="text-align:center">{{ r.qtd_jogos }}</td>
+                        <td>
+                            {% if r.aberta_para_edicao %}
+                            <span class="status-pill status-pill--aberta">Aberta</span>
+                            {% elif r.aberta %}
+                            <span class="status-pill status-pill--aguardando">Aguardando</span>
+                            {% else %}
+                            <span class="status-pill status-pill--encerrado">Fechada</span>
+                            {% endif %}
+                        </td>
+                        <td class="col-datetime">
+                            {{ r.abertura.strftime('%d/%m/%Y %H:%M') if r.abertura else '—' }}
+                        </td>
+                        <td class="col-datetime">
+                            {{ r.fechamento.strftime('%d/%m/%Y %H:%M') if r.fechamento else '—' }}
+                        </td>
+                        <td>
+                            <button
+                                class="btn-secondary btn-sm admin-toggle-btn"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="edit-rodada-{{ r.id }}"
+                                onclick="adminToggleInline(this, 'edit-rodada-{{ r.id }}')"
+                            >Editar</button>
+                        </td>
+                    </tr>
+
+                    {# Inline edit row — hidden by default #}
+                    <tr id="edit-rodada-{{ r.id }}" class="admin-inline-row" hidden>
+                        <td colspan="7">
+                            <form
+                                method="post"
+                                action="/admin/rodadas/{{ r.id }}"
+                                class="admin-inline-form"
+                            >
+                                <div class="admin-inline-fields">
+                                    <label class="admin-field-group">
+                                        <span>Estado</span>
+                                        <label class="admin-checkbox-label">
+                                            <input
+                                                type="checkbox"
+                                                name="aberta"
+                                                value="true"
+                                                {% if r.aberta %}checked{% endif %}
+                                            >
+                                            Rodada aberta para palpites
+                                        </label>
+                                    </label>
+
+                                    <label class="admin-field-group">
+                                        <span>Abertura (UTC)</span>
+                                        <input
+                                            type="datetime-local"
+                                            name="abertura"
+                                            value="{{ r.abertura.strftime('%Y-%m-%dT%H:%M') if r.abertura else '' }}"
+                                            class="admin-input"
+                                        >
+                                    </label>
+
+                                    <label class="admin-field-group">
+                                        <span>Fechamento (UTC)</span>
+                                        <input
+                                            type="datetime-local"
+                                            name="fechamento"
+                                            value="{{ r.fechamento.strftime('%Y-%m-%dT%H:%M') if r.fechamento else '' }}"
+                                            class="admin-input"
+                                        >
+                                    </label>
+                                </div>
+
+                                <div class="admin-inline-actions">
+                                    <button type="submit" class="btn-primary btn-sm">Salvar</button>
+                                    <button
+                                        type="button"
+                                        class="btn-secondary btn-sm"
+                                        onclick="adminToggleInline(document.querySelector('[aria-controls=\'edit-rodada-{{ r.id }}\']'), 'edit-rodada-{{ r.id }}')"
+                                    >Cancelar</button>
+                                </div>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">Nenhuma rodada cadastrada ainda. Use o formulário abaixo para criar a primeira.</p>
+        {% endif %}
+    </article>
+
+    {# ── Formulário de criação ───────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>Nova rodada</h3>
+                <p class="muted">Preencha nome e ordem de exibição</p>
+            </div>
+        </header>
+
+        <form method="post" action="/admin/rodadas" class="admin-create-form">
+            <div class="admin-inline-fields">
+                <label class="admin-field-group">
+                    <span>Nome <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="text"
+                        name="nome"
+                        required
+                        placeholder="Ex.: 1ª Fase — Grupo A"
+                        class="admin-input"
+                    >
+                </label>
+
+                <label class="admin-field-group">
+                    <span>Ordem <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="number"
+                        name="ordem"
+                        required
+                        min="1"
+                        placeholder="Ex.: 1"
+                        class="admin-input admin-input--narrow"
+                    >
+                </label>
+            </div>
+
+            <div class="admin-inline-actions">
+                <button type="submit" class="btn-primary">Criar rodada</button>
+            </div>
+        </form>
+    </article>
+
+</section>
+
+<script>
+function adminToggleInline(btn, targetId) {
+    var row = document.getElementById(targetId);
+    var isHidden = row.hidden;
+    row.hidden = !isHidden;
+    btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+    btn.textContent = isHidden ? 'Fechar' : 'Editar';
+}
+</script>
+{% endblock %}

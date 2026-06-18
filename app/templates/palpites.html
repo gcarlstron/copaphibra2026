@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Meus palpites</p>
+            <h2>Palpite os jogos por rodada</h2>
+        </div>
+    </div>
+
+    {% for rodada in rodadas %}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>{{ rodada.rodada_nome }}</h3>
+                <p class="muted">{% if rodada.aberta_para_edicao %}Rodada aberta para edição{% else %}Rodada fechada{% endif %}</p>
+            </div>
+            <span class="status-pill">{{ rodada.jogos | length }} jogos</span>
+        </header>
+
+        <div class="match-list">
+            {% for jogo in rodada.jogos %}
+            <form class="match-row" method="post" action="/palpites/{{ jogo.jogo_id }}" {% if rodada.aberta_para_edicao %}hx-post="/palpites/{{ jogo.jogo_id }}" hx-swap="none"{% endif %}>
+                <div class="match-info">
+                    <strong>{{ jogo.time_casa }}</strong>
+                    <span>vs</span>
+                    <strong>{{ jogo.time_visitante }}</strong>
+                </div>
+
+                <div class="score-inputs">
+                    <label>
+                        Casa
+                        <input type="number" name="gols_casa" min="0" value="{{ jogo.palpite_casa if jogo.palpite_casa is not none else '' }}" {% if not rodada.aberta_para_edicao %}readonly{% endif %}>
+                    </label>
+                    <label>
+                        Visitante
+                        <input type="number" name="gols_visitante" min="0" value="{{ jogo.palpite_visitante if jogo.palpite_visitante is not none else '' }}" {% if not rodada.aberta_para_edicao %}readonly{% endif %}>
+                    </label>
+                </div>
+
+                <button type="submit" {% if not rodada.aberta_para_edicao %}disabled{% endif %}>Salvar</button>
+            </form>
+            {% endfor %}
+        </div>
+    </article>
+    {% endfor %}
+</section>
+{% endblock %}

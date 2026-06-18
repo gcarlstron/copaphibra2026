@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+
+    {# ── Cabeçalho da página ─────────────────────────────────────── #}
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Copa do Mundo 2026</p>
+            <h2>Classificação</h2>
+        </div>
+        <div class="section-head-actions">
+            <a href="/palpites" class="btn-primary">Meus palpites</a>
+            {% if is_admin %}
+            <a href="/admin/rodadas" class="btn-secondary">Admin</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ── Rodadas abertas (chamada de ação) ────────────────────────── #}
+    {% if dados.rodadas_abertas %}
+    <div class="alert-banner">
+        <div class="alert-banner-icon">!</div>
+        <div class="alert-banner-body">
+            <strong>Rodadas abertas para palpite</strong>
+            <ul class="alert-rodadas-list">
+                {% for rodada in dados.rodadas_abertas %}
+                <li>
+                    {{ rodada.nome }}
+                    {% if rodada.fechamento %}
+                    — <span class="deadline">Aberta até {{ rodada.fechamento.strftime('%d/%m às %H:%M') }} UTC</span>
+                    {% else %}
+                    — <span class="deadline">Sem prazo definido</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            <a href="/palpites" class="btn-primary btn-sm">Palpitar agora</a>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Tabela de classificação ──────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>Classificação geral</h3>
+                <p class="muted">Posições, pontos e critérios de desempate</p>
+            </div>
+        </header>
+
+        {% if dados.classificacao %}
+        <div class="table-wrap">
+            <table class="ranking-table">
+                <thead>
+                    <tr>
+                        <th class="col-pos">#</th>
+                        <th class="col-nome">Jogador</th>
+                        <th class="col-pts">Pts</th>
+                        <th class="col-bucket" title="Placares exatos">9</th>
+                        <th class="col-bucket" title="Vencedor + gols do vencedor">6</th>
+                        <th class="col-bucket" title="Vencedor + gols do perdedor">4</th>
+                        <th class="col-bucket" title="Só o vencedor">3</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in dados.classificacao %}
+                    <tr class="ranking-row {% if loop.first %}ranking-row--top{% endif %}">
+                        <td class="col-pos">
+                            {% if item.posicao == 1 %}
+                            <span class="pos-badge pos-badge--gold">{{ item.posicao }}</span>
+                            {% elif item.posicao == 2 %}
+                            <span class="pos-badge pos-badge--silver">{{ item.posicao }}</span>
+                            {% elif item.posicao == 3 %}
+                            <span class="pos-badge pos-badge--bronze">{{ item.posicao }}</span>
+                            {% else %}
+                            <span class="pos-badge">{{ item.posicao }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="col-nome">{{ item.nome }}</td>
+                        <td class="col-pts"><strong>{{ item.total }}</strong></td>
+                        <td class="col-bucket">{{ item.qtd_9 if item.qtd_9 else '–' }}</td>
+                        <td class="col-bucket">{{ item.qtd_6 if item.qtd_6 else '–' }}</td>
+                        <td class="col-bucket">{{ item.qtd_4 if item.qtd_4 else '–' }}</td>
+                        <td class="col-bucket">{{ item.qtd_3 if item.qtd_3 else '–' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">Nenhum palpite pontuado ainda. Os pontos aparecem após o encerramento das rodadas.</p>
+        {% endif %}
+    </article>
+
+    {# ── Grade inferior: jogos recentes + próximos jogos ─────────── #}
+    <div class="dashboard-grid">
+
+        {# Últimos resultados #}
+        <article class="round-card">
+            <header class="round-head">
+                <div>
+                    <h3>Últimos resultados</h3>
+                    <p class="muted">Jogos encerrados</p>
+                </div>
+            </header>
+
+            {% if dados.jogos_recentes %}
+            <div class="match-list">
+                {% for jogo in dados.jogos_recentes %}
+                <a href="/jogos/{{ jogo.jogo_id }}" class="result-row">
+                    <span class="result-team result-team--casa">{{ jogo.time_casa }}</span>
+                    <span class="result-score">
+                        {{ jogo.gols_casa if jogo.gols_casa is not none else '?' }}
+                        <span class="result-vs">x</span>
+                        {{ jogo.gols_visitante if jogo.gols_visitante is not none else '?' }}
+                    </span>
+                    <span class="result-team result-team--visitante">{{ jogo.time_visitante }}</span>
+                    <span class="result-date">{{ jogo.data_hora.strftime('%d/%m') }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-state">Nenhum jogo encerrado ainda.</p>
+            {% endif %}
+        </article>
+
+        {# Próximos jogos #}
+        <article class="round-card">
+            <header class="round-head">
+                <div>
+                    <h3>Próximos jogos</h3>
+                    <p class="muted">Jogos agendados</p>
+                </div>
+            </header>
+
+            {% if dados.proximos_jogos %}
+            <div class="match-list">
+                {% for jogo in dados.proximos_jogos %}
+                <div class="upcoming-row">
+                    <span class="upcoming-teams">
+                        <strong>{{ jogo.time_casa }}</strong>
+                        <span class="result-vs">vs</span>
+                        <strong>{{ jogo.time_visitante }}</strong>
+                    </span>
+                    <span class="upcoming-date">{{ jogo.data_hora.strftime('%d/%m %H:%M') }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="empty-state">Nenhum jogo agendado no momento.</p>
+            {% endif %}
+        </article>
+
+    </div>{# /dashboard-grid #}
+
+</section>
+{% endblock %}

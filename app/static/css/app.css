@@ -1,0 +1,1125 @@
+:root {
+    color-scheme: light;
+    --bg: #f4efe7;
+    --surface: rgba(255, 255, 255, 0.78);
+    --surface-strong: #ffffff;
+    --text: #16202b;
+    --muted: #5a6876;
+    --accent: #d45d28;
+    --accent-soft: #ffe1cf;
+    --border: rgba(22, 32, 43, 0.12);
+    --shadow: 0 24px 60px rgba(22, 32, 43, 0.12);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: var(--text);
+    background:
+        radial-gradient(circle at top left, rgba(212, 93, 40, 0.16), transparent 35%),
+        radial-gradient(circle at bottom right, rgba(22, 32, 43, 0.08), transparent 30%),
+        var(--bg);
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image: linear-gradient(rgba(22, 32, 43, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(22, 32, 43, 0.02) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.55), transparent 80%);
+}
+
+.page-shell {
+    width: min(1100px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 32px 0 48px;
+}
+
+.topbar,
+.hero,
+.hero-card {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    backdrop-filter: blur(18px);
+    box-shadow: var(--shadow);
+}
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 24px 28px;
+    border-radius: 24px;
+}
+
+.content {
+    margin-top: 24px;
+}
+
+.hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.9fr);
+    gap: 20px;
+    padding: 32px;
+    border-radius: 28px;
+}
+
+.hero h2,
+.topbar h1 {
+    margin: 0;
+    line-height: 1;
+}
+
+.hero h2 {
+    font-size: clamp(2rem, 5vw, 4rem);
+    letter-spacing: -0.04em;
+    max-width: 12ch;
+}
+
+.lead {
+    margin: 16px 0 0;
+    max-width: 58ch;
+    color: var(--muted);
+    font-size: 1.05rem;
+    line-height: 1.65;
+}
+
+.eyebrow {
+    margin: 0 0 12px;
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.status-pill,
+.hero-label {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: fit-content;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.status-pill {
+    border: 0;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.auth-shell {
+    display: grid;
+    place-items: center;
+    min-height: calc(100vh - 160px);
+}
+
+.auth-card {
+    width: min(100%, 420px);
+    padding: 32px;
+    border-radius: 28px;
+    border: 1px solid var(--border);
+    background: var(--surface-strong);
+    box-shadow: var(--shadow);
+}
+
+.auth-card h2 {
+    margin: 0 0 24px;
+    font-size: 2rem;
+    letter-spacing: -0.03em;
+}
+
+.auth-form {
+    display: grid;
+    gap: 16px;
+}
+
+.auth-form label {
+    display: grid;
+    gap: 8px;
+    font-weight: 600;
+}
+
+.auth-form input {
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    font: inherit;
+    background: #fff;
+}
+
+.auth-form button {
+    margin-top: 8px;
+    padding: 14px 18px;
+    border: 0;
+    border-radius: 14px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.hero-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 240px;
+    padding: 24px;
+    border-radius: 24px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.72));
+}
+
+.hero-card strong {
+    font-size: 1.45rem;
+    line-height: 1.2;
+}
+
+.page-section {
+    display: grid;
+    gap: 20px;
+}
+
+.section-head h2,
+.round-head h3 {
+    margin: 0;
+}
+
+.muted {
+    margin: 6px 0 0;
+    color: var(--muted);
+}
+
+.round-card {
+    padding: 24px;
+    border-radius: 24px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.round-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.match-list {
+    display: grid;
+    gap: 14px;
+}
+
+.match-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(220px, 1fr) auto;
+    gap: 16px;
+    align-items: center;
+    padding: 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(22, 32, 43, 0.08);
+}
+
+.match-info {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.score-inputs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.score-inputs label {
+    display: grid;
+    gap: 6px;
+    font-weight: 600;
+}
+
+.score-inputs input {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font: inherit;
+    background: #fff;
+}
+
+.match-row button {
+    padding: 12px 16px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.match-row button:disabled,
+.score-inputs input[readonly] {
+    opacity: 0.65;
+    cursor: not-allowed;
+}
+
+@media (max-width: 840px) {
+    .topbar,
+    .hero {
+        grid-template-columns: 1fr;
+    }
+
+    .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .page-shell {
+        width: min(100% - 20px, 1100px);
+        padding-top: 20px;
+    }
+
+    .match-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ============================================================
+   Componentes compartilhados (dashboard + detalhe do jogo)
+   ============================================================ */
+
+/* Botões de ação */
+.btn-primary {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-decoration: none;
+    border: 0;
+    cursor: pointer;
+    transition: opacity 0.15s;
+}
+
+.btn-primary:hover {
+    opacity: 0.88;
+}
+
+.btn-primary.btn-sm {
+    padding: 7px 14px;
+    font-size: 0.82rem;
+}
+
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    padding: 10px 18px;
+    border-radius: 999px;
+    background: var(--surface-strong);
+    color: var(--text);
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 700;
+    text-decoration: none;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.btn-secondary:hover {
+    background: var(--accent-soft);
+}
+
+/* Cabeçalho de seção com ações */
+.section-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.section-head h2 {
+    margin: 0;
+    font-size: clamp(1.5rem, 4vw, 2.2rem);
+    letter-spacing: -0.03em;
+}
+
+.section-head-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+/* Estado vazio */
+.empty-state {
+    color: var(--muted);
+    font-size: 0.95rem;
+    padding: 12px 0 4px;
+    margin: 0;
+}
+
+/* ============================================================
+   Alerta de rodada aberta
+   ============================================================ */
+
+.alert-banner {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    padding: 20px 24px;
+    border-radius: 18px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(212, 93, 40, 0.25);
+}
+
+.alert-banner-icon {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 900;
+    font-size: 1rem;
+    display: grid;
+    place-items: center;
+    margin-top: 2px;
+}
+
+.alert-banner-body {
+    display: grid;
+    gap: 10px;
+}
+
+.alert-banner-body strong {
+    font-size: 1rem;
+    color: var(--text);
+}
+
+.alert-rodadas-list {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--muted);
+    font-size: 0.9rem;
+    display: grid;
+    gap: 4px;
+}
+
+.deadline {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+/* ============================================================
+   Tabela de classificação / palpites
+   ============================================================ */
+
+.table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.ranking-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+
+.ranking-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+}
+
+.ranking-table td {
+    padding: 12px 12px;
+    border-bottom: 1px solid rgba(22, 32, 43, 0.06);
+    vertical-align: middle;
+}
+
+.ranking-row:last-child td {
+    border-bottom: 0;
+}
+
+.ranking-row:hover td {
+    background: rgba(212, 93, 40, 0.04);
+}
+
+/* Colunas da tabela */
+.col-pos {
+    width: 52px;
+    text-align: center;
+}
+
+.col-nome {
+    min-width: 120px;
+}
+
+.col-pts {
+    width: 60px;
+    text-align: center;
+    font-size: 1rem;
+}
+
+.col-bucket {
+    width: 48px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.88rem;
+}
+
+.col-palpite {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Medalhas de posição */
+.pos-badge {
+    display: inline-grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 0.82rem;
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+
+.pos-badge--gold {
+    background: #fef3c7;
+    color: #92400e;
+    border-color: #fcd34d;
+}
+
+.pos-badge--silver {
+    background: #f1f5f9;
+    color: #475569;
+    border-color: #cbd5e1;
+}
+
+.pos-badge--bronze {
+    background: #fdf4ed;
+    color: #9a3412;
+    border-color: #fed7aa;
+}
+
+/* Badge de pontos na tabela de palpites */
+.pts-badge {
+    display: inline-grid;
+    place-items: center;
+    min-width: 32px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.82rem;
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--border);
+}
+
+.pts-badge--9 {
+    background: #d1fae5;
+    color: #065f46;
+    border-color: #6ee7b7;
+}
+
+.pts-badge--6 {
+    background: #dbeafe;
+    color: #1e40af;
+    border-color: #93c5fd;
+}
+
+.pts-badge--4 {
+    background: #ede9fe;
+    color: #5b21b6;
+    border-color: #c4b5fd;
+}
+
+.pts-badge--3 {
+    background: #fef9c3;
+    color: #854d0e;
+    border-color: #fde047;
+}
+
+/* ============================================================
+   Dashboard — grade de jogos recentes / próximos
+   ============================================================ */
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+/* Linha de resultado clicável */
+.result-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(22, 32, 43, 0.08);
+    text-decoration: none;
+    color: var(--text);
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.result-row:hover {
+    background: var(--accent-soft);
+    border-color: rgba(212, 93, 40, 0.25);
+}
+
+.result-team {
+    font-size: 0.88rem;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.result-team--visitante {
+    text-align: right;
+}
+
+.result-score {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 1rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
+    padding: 0 4px;
+    white-space: nowrap;
+}
+
+.result-vs {
+    color: var(--muted);
+    font-weight: 400;
+    font-size: 0.8rem;
+}
+
+.result-date {
+    font-size: 0.78rem;
+    color: var(--muted);
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Linha de próximos jogos */
+.upcoming-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(22, 32, 43, 0.08);
+}
+
+.upcoming-teams {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.88rem;
+    flex-wrap: wrap;
+}
+
+.upcoming-date {
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* ============================================================
+   Detalhe do jogo — cabeçalho / scoreboard
+   ============================================================ */
+
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.88rem;
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 600;
+    margin-bottom: 4px;
+    transition: color 0.15s;
+}
+
+.back-link:hover {
+    color: var(--accent);
+}
+
+.match-detail-card {
+    text-align: center;
+}
+
+.match-detail-date {
+    color: var(--muted);
+    font-size: 0.88rem;
+    margin: 4px 0 24px;
+}
+
+.match-detail-scoreboard {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 16px;
+    align-items: center;
+    margin: 0 auto;
+    max-width: 520px;
+}
+
+.match-detail-team {
+    font-size: clamp(1rem, 3vw, 1.4rem);
+    font-weight: 700;
+    text-align: right;
+}
+
+.match-detail-team--right {
+    text-align: left;
+}
+
+.match-detail-score {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.score-num {
+    font-size: clamp(2rem, 6vw, 3.5rem);
+    font-weight: 900;
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    line-height: 1;
+}
+
+.score-sep {
+    font-size: clamp(1.5rem, 4vw, 2.5rem);
+    color: var(--muted);
+    font-weight: 300;
+}
+
+.score-tbd {
+    font-size: 1.1rem;
+    color: var(--muted);
+    font-style: italic;
+    padding: 0 8px;
+}
+
+.match-detail-status {
+    margin-top: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+.status-pill--encerrado {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-pill--agendado {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+/* Palpite próprio (rodada ainda aberta) */
+.own-palpite-card {
+    padding: 20px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.85);
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+}
+
+.own-palpite-label {
+    margin: 0 0 12px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.own-palpite-score {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    flex-wrap: wrap;
+}
+
+.own-palpite-nums {
+    font-size: 1.5rem;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
+    color: var(--accent);
+    letter-spacing: -0.03em;
+}
+
+/* Aviso de privacidade */
+.privacy-notice {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: rgba(22, 32, 43, 0.04);
+    border: 1px solid var(--border);
+}
+
+.privacy-notice-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.privacy-notice p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+/* ============================================================
+   Topbar — navegação
+   ============================================================ */
+
+.topbar-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.topbar-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none;
+    color: var(--text);
+    transition: background 0.15s, color 0.15s;
+}
+
+.topbar-link:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.topbar-link--admin {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.topbar-link--admin:hover {
+    opacity: 0.85;
+}
+
+/* ============================================================
+   Admin — componentes de formulário e tabela
+   ============================================================ */
+
+/* Status pills extras */
+.status-pill--aberta {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-pill--aguardando {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+.status-pill--agendado {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.status-pill--encerrado {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+/* Coluna de data na tabela admin */
+.col-datetime {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.88rem;
+    color: var(--muted);
+}
+
+/* Tabela admin com linhas editáveis */
+.admin-table .ranking-row {
+    vertical-align: middle;
+}
+
+.admin-inline-row td {
+    padding: 0;
+    border-bottom: 2px solid var(--accent-soft);
+}
+
+/* Formulário inline que aparece dentro de uma linha da tabela */
+.admin-inline-form {
+    display: grid;
+    gap: 14px;
+    padding: 20px;
+}
+
+.admin-inline-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    padding: 20px;
+    gap: 20px;
+}
+
+.admin-inline-panel {
+    display: grid;
+    gap: 12px;
+    align-content: start;
+    padding: 16px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--border);
+}
+
+.admin-inline-panel--result {
+    border-color: rgba(212, 93, 40, 0.3);
+    background: rgba(255, 225, 207, 0.25);
+}
+
+.admin-panel-label {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+}
+
+.admin-panel-note {
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.5;
+}
+
+/* Grid de campos do formulário */
+.admin-inline-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+}
+
+.admin-field-group {
+    display: grid;
+    gap: 6px;
+    font-weight: 600;
+    font-size: 0.88rem;
+    min-width: 160px;
+}
+
+/* Inputs admin */
+.admin-input {
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    font: inherit;
+    font-size: 0.92rem;
+    background: #fff;
+    color: var(--text);
+    min-width: 0;
+    width: 100%;
+}
+
+.admin-input:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.admin-input--narrow {
+    max-width: 100px;
+}
+
+.admin-input--select {
+    cursor: pointer;
+    min-width: 200px;
+}
+
+/* Checkbox inline */
+.admin-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 400;
+    cursor: pointer;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: #fff;
+}
+
+.admin-checkbox-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent);
+    flex-shrink: 0;
+}
+
+/* Asterisco de campo obrigatório */
+.admin-required {
+    color: var(--accent);
+    font-weight: 900;
+}
+
+/* Linha de botões de ação */
+.admin-inline-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Botão de desativar usuário — destaque sutil de perigo */
+.btn-desativar {
+    border-color: rgba(212, 93, 40, 0.4);
+    color: var(--accent);
+}
+
+.btn-desativar:hover {
+    background: var(--accent-soft);
+}
+
+/* Botão de lançar resultado — destaque */
+.btn-result {
+    background: #065f46;
+}
+
+.btn-result:hover {
+    opacity: 0.85;
+}
+
+/* Formulário de criação (card separado) */
+.admin-create-form {
+    display: grid;
+    gap: 20px;
+}
+
+/* Filtro de rodada (acima da tabela de jogos) */
+.admin-filter-form {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* ============================================================
+   Responsivo mobile
+   ============================================================ */
+
+@media (max-width: 640px) {
+    .dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .result-row {
+        grid-template-columns: 1fr auto 1fr;
+        grid-template-rows: auto auto;
+    }
+
+    .result-date {
+        grid-column: 1 / -1;
+        text-align: left;
+    }
+
+    .match-detail-scoreboard {
+        gap: 8px;
+    }
+
+    .section-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .col-bucket {
+        display: none;
+    }
+
+    .ranking-table th.col-bucket,
+    .ranking-table td.col-bucket {
+        display: none;
+    }
+
+    /* Admin — topbar links empilham no mobile */
+    .topbar-nav {
+        gap: 6px;
+    }
+
+    .topbar-link {
+        padding: 6px 10px;
+        font-size: 0.82rem;
+    }
+
+    /* Admin — painéis inline viram coluna única */
+    .admin-inline-two-col {
+        grid-template-columns: 1fr;
+    }
+
+    /* Admin — campos de formulário ocupam largura total */
+    .admin-field-group {
+        min-width: 100%;
+    }
+
+    .admin-input--narrow {
+        max-width: 100%;
+    }
+
+    /* Admin — tabela omite coluna de data no mobile */
+    .admin-table .col-datetime {
+        display: none;
+    }
+}

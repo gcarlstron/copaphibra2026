@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+
+    {# ── Cabeçalho ──────────────────────────────────────────────── #}
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Administração</p>
+            <h2>Usuários</h2>
+        </div>
+        <div class="section-head-actions">
+            <a href="/admin/rodadas" class="btn-secondary">Rodadas</a>
+            <a href="/admin/jogos" class="btn-secondary">Jogos</a>
+            <a href="/" class="btn-secondary">Voltar ao dashboard</a>
+        </div>
+    </div>
+
+    {# ── Erro de validação (criar usuário) ───────────────────────── #}
+    {% if erro %}
+    <div class="alert-banner" role="alert">
+        <div class="alert-banner-icon" aria-hidden="true">!</div>
+        <div class="alert-banner-body">
+            <strong>Erro ao criar usuário</strong>
+            <p style="margin:0;font-size:0.9rem;color:var(--text)">{{ erro }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Tabela de usuários ──────────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>Usuários cadastrados</h3>
+                <p class="muted">Gerencie acesso, senha e perfil de cada participante</p>
+            </div>
+            <span class="status-pill">{{ usuarios | length }} usuário{{ 's' if usuarios | length != 1 else '' }}</span>
+        </header>
+
+        {% if usuarios %}
+        <div class="table-wrap">
+            <table class="ranking-table admin-table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Username</th>
+                        <th style="width:80px;text-align:center">Admin</th>
+                        <th style="width:80px;text-align:center">Ativo</th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr class="ranking-row" id="usuario-row-{{ u.id }}">
+                        <td><strong>{{ u.nome }}</strong></td>
+                        <td style="color:var(--muted)">{{ u.username }}</td>
+                        <td style="text-align:center">
+                            {% if u.is_admin %}
+                            <span class="status-pill status-pill--aberta" style="font-size:0.78rem">Sim</span>
+                            {% else %}
+                            <span style="color:var(--muted)">—</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center">
+                            {% if u.ativo %}
+                            <span class="status-pill status-pill--agendado" style="font-size:0.78rem">Ativo</span>
+                            {% else %}
+                            <span class="status-pill status-pill--encerrado" style="font-size:0.78rem">Inativo</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button
+                                class="btn-secondary btn-sm admin-toggle-btn"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="edit-usuario-{{ u.id }}"
+                                onclick="adminToggleInline(this, 'edit-usuario-{{ u.id }}')"
+                            >Editar</button>
+                        </td>
+                    </tr>
+
+                    {# Inline edit row — hidden by default #}
+                    <tr id="edit-usuario-{{ u.id }}" class="admin-inline-row" hidden>
+                        <td colspan="5">
+                            <div class="admin-inline-two-col">
+
+                                {# Coluna 1: resetar senha #}
+                                <div class="admin-inline-panel">
+                                    <p class="admin-panel-label">Resetar senha</p>
+                                    <form method="post" action="/admin/usuarios/{{ u.id }}/senha" class="admin-inline-form">
+                                        <div class="admin-inline-fields">
+                                            <label class="admin-field-group">
+                                                <span>Nova senha <span class="admin-required" aria-hidden="true">*</span></span>
+                                                <input
+                                                    type="password"
+                                                    name="nova_senha"
+                                                    required
+                                                    autocomplete="new-password"
+                                                    class="admin-input"
+                                                >
+                                            </label>
+                                        </div>
+                                        <div class="admin-inline-actions">
+                                            <button type="submit" class="btn-primary btn-sm">Salvar senha</button>
+                                            <button type="button" class="btn-secondary btn-sm"
+                                                onclick="adminToggleInline(document.querySelector('[aria-controls=\'edit-usuario-{{ u.id }}\']'), 'edit-usuario-{{ u.id }}')">Cancelar</button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                {# Coluna 2: ativar / desativar #}
+                                <div class="admin-inline-panel">
+                                    <p class="admin-panel-label">Status da conta</p>
+                                    <p class="admin-panel-note">
+                                        Conta atualmente: <strong>{{ 'ativa' if u.ativo else 'inativa' }}</strong>.
+                                        Usuários inativos não conseguem fazer login.
+                                    </p>
+                                    <div class="admin-inline-actions">
+                                        {% if u.ativo %}
+                                        <form method="post" action="/admin/usuarios/{{ u.id }}/ativo">
+                                            <input type="hidden" name="ativo" value="false">
+                                            <button type="submit" class="btn-secondary btn-sm btn-desativar">Desativar</button>
+                                        </form>
+                                        {% else %}
+                                        <form method="post" action="/admin/usuarios/{{ u.id }}/ativo">
+                                            <input type="hidden" name="ativo" value="true">
+                                            <button type="submit" class="btn-primary btn-sm">Ativar</button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                            </div>{# /admin-inline-two-col #}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">Nenhum usuário cadastrado ainda.</p>
+        {% endif %}
+    </article>
+
+    {# ── Formulário de criação ───────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>Novo usuário</h3>
+                <p class="muted">Username deve ser único</p>
+            </div>
+        </header>
+
+        <form method="post" action="/admin/usuarios" class="admin-create-form">
+            <div class="admin-inline-fields">
+                <label class="admin-field-group">
+                    <span>Nome completo <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="text"
+                        name="nome"
+                        required
+                        placeholder="Ex.: Gabriel"
+                        class="admin-input"
+                    >
+                </label>
+
+                <label class="admin-field-group">
+                    <span>Username <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="text"
+                        name="username"
+                        required
+                        placeholder="Ex.: gabriel"
+                        autocomplete="username"
+                        class="admin-input"
+                    >
+                </label>
+
+                <label class="admin-field-group">
+                    <span>Senha <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="password"
+                        name="senha"
+                        required
+                        autocomplete="new-password"
+                        class="admin-input"
+                    >
+                </label>
+
+                <label class="admin-field-group">
+                    <span>Perfil</span>
+                    <label class="admin-checkbox-label">
+                        <input type="checkbox" name="is_admin" value="true">
+                        Conceder acesso de administrador
+                    </label>
+                </label>
+            </div>
+
+            <div class="admin-inline-actions">
+                <button type="submit" class="btn-primary">Criar usuário</button>
+            </div>
+        </form>
+    </article>
+
+</section>
+
+<script>
+function adminToggleInline(btn, targetId) {
+    var row = document.getElementById(targetId);
+    var isHidden = row.hidden;
+    row.hidden = !isHidden;
+    btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+    btn.textContent = isHidden ? 'Fechar' : 'Editar';
+}
+</script>
+{% endblock %}

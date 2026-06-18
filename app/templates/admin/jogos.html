@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+
+    {# ── Cabeçalho ──────────────────────────────────────────────── #}
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Administração</p>
+            <h2>Jogos</h2>
+        </div>
+        <div class="section-head-actions">
+            <a href="/admin/rodadas" class="btn-secondary">Rodadas</a>
+            <a href="/admin/usuarios" class="btn-secondary">Usuários</a>
+            <a href="/" class="btn-secondary">Voltar ao dashboard</a>
+        </div>
+    </div>
+
+    {# ── Filtro por rodada ───────────────────────────────────────── #}
+    <form method="get" action="/admin/jogos" class="admin-filter-form">
+        <label class="admin-field-group" style="flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="white-space:nowrap;font-weight:600">Filtrar por rodada:</span>
+            <select name="rodada_id" class="admin-input admin-input--select" onchange="this.form.submit()">
+                <option value="">Todas as rodadas</option>
+                {% for r in rodadas %}
+                <option value="{{ r.id }}" {% if rodada_id_filtro == r.id %}selected{% endif %}>{{ r.nome }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <noscript><button type="submit" class="btn-secondary btn-sm">Filtrar</button></noscript>
+    </form>
+
+    {# ── Tabela de jogos ─────────────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>
+                    {% if rodada_id_filtro %}
+                        {% for r in rodadas %}{% if r.id == rodada_id_filtro %}Jogos — {{ r.nome }}{% endif %}{% endfor %}
+                    {% else %}
+                        Todos os jogos
+                    {% endif %}
+                </h3>
+                <p class="muted">Edite dados ou lance o resultado de cada jogo</p>
+            </div>
+            <span class="status-pill">{{ jogos | length }} jogo{{ 's' if jogos | length != 1 else '' }}</span>
+        </header>
+
+        {% if jogos %}
+        <div class="table-wrap">
+            <table class="ranking-table admin-table">
+                <thead>
+                    <tr>
+                        <th>Rodada</th>
+                        <th>Data/Hora (UTC)</th>
+                        <th>Confronto</th>
+                        <th style="width:100px">Status</th>
+                        <th style="width:90px">Placar</th>
+                        <th style="width:80px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for j in jogos %}
+                    <tr class="ranking-row" id="jogo-row-{{ j.id }}">
+                        <td>{{ j.rodada_nome }}</td>
+                        <td class="col-datetime">{{ j.data_hora.strftime('%d/%m/%Y %H:%M') }}</td>
+                        <td>
+                            <span style="font-weight:600">{{ j.time_casa }}</span>
+                            <span style="color:var(--muted);margin:0 6px">×</span>
+                            <span style="font-weight:600">{{ j.time_visitante }}</span>
+                        </td>
+                        <td>
+                            {% if j.status == 'encerrado' %}
+                            <span class="status-pill status-pill--encerrado">Encerrado</span>
+                            {% else %}
+                            <span class="status-pill status-pill--agendado">Agendado</span>
+                            {% endif %}
+                        </td>
+                        <td style="text-align:center;font-variant-numeric:tabular-nums;font-weight:700">
+                            {% if j.gols_casa is not none %}
+                            {{ j.gols_casa }}–{{ j.gols_visitante }}
+                            {% else %}
+                            <span style="color:var(--muted)">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <button
+                                class="btn-secondary btn-sm admin-toggle-btn"
+                                type="button"
+                                aria-expanded="false"
+                                aria-controls="edit-jogo-{{ j.id }}"
+                                onclick="adminToggleInline(this, 'edit-jogo-{{ j.id }}')"
+                            >Editar</button>
+                        </td>
+                    </tr>
+
+                    {# Inline edit + resultado row — hidden by default #}
+                    <tr id="edit-jogo-{{ j.id }}" class="admin-inline-row" hidden>
+                        <td colspan="6">
+                            <div class="admin-inline-two-col">
+
+                                {# Coluna 1: editar dados do jogo #}
+                                <div class="admin-inline-panel">
+                                    <p class="admin-panel-label">Editar jogo</p>
+                                    <form method="post" action="/admin/jogos/{{ j.id }}" class="admin-inline-form">
+                                        <div class="admin-inline-fields">
+                                            <label class="admin-field-group">
+                                                <span>Data/Hora (UTC)</span>
+                                                <input
+                                                    type="datetime-local"
+                                                    name="data_hora"
+                                                    value="{{ j.data_hora.strftime('%Y-%m-%dT%H:%M') }}"
+                                                    required
+                                                    class="admin-input"
+                                                >
+                                            </label>
+                                            <label class="admin-field-group">
+                                                <span>Time da casa</span>
+                                                <input
+                                                    type="text"
+                                                    name="time_casa"
+                                                    value="{{ j.time_casa }}"
+                                                    required
+                                                    class="admin-input"
+                                                >
+                                            </label>
+                                            <label class="admin-field-group">
+                                                <span>Time visitante</span>
+                                                <input
+                                                    type="text"
+                                                    name="time_visitante"
+                                                    value="{{ j.time_visitante }}"
+                                                    required
+                                                    class="admin-input"
+                                                >
+                                            </label>
+                                        </div>
+                                        <div class="admin-inline-actions">
+                                            <button type="submit" class="btn-primary btn-sm">Salvar dados</button>
+                                            <button type="button" class="btn-secondary btn-sm"
+                                                onclick="adminToggleInline(document.querySelector('[aria-controls=\'edit-jogo-{{ j.id }}\']'), 'edit-jogo-{{ j.id }}')">Cancelar</button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                {# Coluna 2: lançar resultado #}
+                                <div class="admin-inline-panel admin-inline-panel--result">
+                                    <p class="admin-panel-label">Lançar resultado</p>
+                                    <p class="admin-panel-note">Recalcula os pontos de todos os palpites e encerra o jogo.</p>
+                                    <form method="post" action="/admin/jogos/{{ j.id }}/resultado" class="admin-inline-form">
+                                        <div class="admin-inline-fields">
+                                            <label class="admin-field-group">
+                                                <span>Gols — {{ j.time_casa }}</span>
+                                                <input
+                                                    type="number"
+                                                    name="gols_casa"
+                                                    min="0"
+                                                    value="{{ j.gols_casa if j.gols_casa is not none else '' }}"
+                                                    required
+                                                    class="admin-input admin-input--narrow"
+                                                >
+                                            </label>
+                                            <label class="admin-field-group">
+                                                <span>Gols — {{ j.time_visitante }}</span>
+                                                <input
+                                                    type="number"
+                                                    name="gols_visitante"
+                                                    min="0"
+                                                    value="{{ j.gols_visitante if j.gols_visitante is not none else '' }}"
+                                                    required
+                                                    class="admin-input admin-input--narrow"
+                                                >
+                                            </label>
+                                        </div>
+                                        <div class="admin-inline-actions">
+                                            <button type="submit" class="btn-primary btn-sm btn-result">Lançar resultado</button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                            </div>{# /admin-inline-two-col #}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">
+            {% if rodada_id_filtro %}
+            Nenhum jogo cadastrado nesta rodada ainda.
+            {% else %}
+            Nenhum jogo cadastrado. Use o formulário abaixo para adicionar.
+            {% endif %}
+        </p>
+        {% endif %}
+    </article>
+
+    {# ── Formulário de criação ───────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>Novo jogo</h3>
+                <p class="muted">Cadastre um jogo em uma rodada existente</p>
+            </div>
+        </header>
+
+        {% if rodadas %}
+        <form method="post" action="/admin/jogos" class="admin-create-form">
+            <div class="admin-inline-fields">
+                <label class="admin-field-group">
+                    <span>Rodada <span class="admin-required" aria-hidden="true">*</span></span>
+                    <select name="rodada_id" required class="admin-input admin-input--select">
+                        {% for r in rodadas %}
+                        <option value="{{ r.id }}" {% if rodada_id_filtro == r.id %}selected{% endif %}>{{ r.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label class="admin-field-group">
+                    <span>Data/Hora (UTC) <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="datetime-local"
+                        name="data_hora"
+                        required
+                        class="admin-input"
+                    >
+                </label>
+
+                <label class="admin-field-group">
+                    <span>Time da casa <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="text"
+                        name="time_casa"
+                        required
+                        placeholder="Ex.: Brasil"
+                        class="admin-input"
+                    >
+                </label>
+
+                <label class="admin-field-group">
+                    <span>Time visitante <span class="admin-required" aria-hidden="true">*</span></span>
+                    <input
+                        type="text"
+                        name="time_visitante"
+                        required
+                        placeholder="Ex.: Argentina"
+                        class="admin-input"
+                    >
+                </label>
+            </div>
+
+            <div class="admin-inline-actions">
+                <button type="submit" class="btn-primary">Criar jogo</button>
+            </div>
+        </form>
+        {% else %}
+        <p class="empty-state">Crie ao menos uma rodada antes de cadastrar jogos.</p>
+        {% endif %}
+    </article>
+
+</section>
+
+<script>
+function adminToggleInline(btn, targetId) {
+    var row = document.getElementById(targetId);
+    var isHidden = row.hidden;
+    row.hidden = !isHidden;
+    btn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+    btn.textContent = isHidden ? 'Fechar' : 'Editar';
+}
+</script>
+{% endblock %}

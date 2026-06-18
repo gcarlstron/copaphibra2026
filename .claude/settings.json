@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pytest:*)",
+      "Bash(pip:*)",
+      "Bash(uvicorn:*)",
+      "Bash(alembic:*)",
+      "Bash(ruff:*)",
+      "Bash(black:*)"
+    ]
+  }
+}

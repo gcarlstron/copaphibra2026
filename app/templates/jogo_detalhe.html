@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+
+    {# ── Navegação de volta ───────────────────────────────────────── #}
+    <div>
+        <a href="/" class="back-link">&larr; Voltar ao dashboard</a>
+    </div>
+
+    {# ── Cabeçalho do jogo ────────────────────────────────────────── #}
+    <article class="round-card match-detail-card">
+        <p class="eyebrow">{{ dados.jogo.rodada_nome }}</p>
+        <p class="match-detail-date">{{ dados.jogo.data_hora.strftime('%d/%m/%Y %H:%M') }} UTC</p>
+
+        <div class="match-detail-scoreboard">
+            <span class="match-detail-team">{{ dados.jogo.time_casa }}</span>
+
+            <div class="match-detail-score">
+                {% if dados.jogo.gols_casa is not none and dados.jogo.gols_visitante is not none %}
+                <span class="score-num">{{ dados.jogo.gols_casa }}</span>
+                <span class="score-sep">–</span>
+                <span class="score-num">{{ dados.jogo.gols_visitante }}</span>
+                {% else %}
+                <span class="score-tbd">a definir</span>
+                {% endif %}
+            </div>
+
+            <span class="match-detail-team match-detail-team--right">{{ dados.jogo.time_visitante }}</span>
+        </div>
+
+        <div class="match-detail-status">
+            {% if dados.jogo.status == 'encerrado' %}
+            <span class="status-pill status-pill--encerrado">Encerrado</span>
+            {% elif dados.jogo.status == 'agendado' %}
+            <span class="status-pill status-pill--agendado">Agendado</span>
+            {% else %}
+            <span class="status-pill">{{ dados.jogo.status }}</span>
+            {% endif %}
+        </div>
+    </article>
+
+    {# ── Palpites ─────────────────────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head">
+            <div>
+                <h3>Palpites</h3>
+                {% if dados.terceiros_visiveis %}
+                <p class="muted">Palpites de todos os participantes</p>
+                {% else %}
+                <p class="muted">Seu palpite</p>
+                {% endif %}
+            </div>
+            {% if dados.palpites %}
+            <span class="status-pill">{{ dados.palpites | length }} palpite{% if dados.palpites | length != 1 %}s{% endif %}</span>
+            {% endif %}
+        </header>
+
+        {% if dados.terceiros_visiveis %}
+            {# Rodada fechada: mostrar todos os palpites ordenados por pontos #}
+            {% if dados.palpites %}
+            <div class="table-wrap">
+                <table class="ranking-table">
+                    <thead>
+                        <tr>
+                            <th class="col-nome">Jogador</th>
+                            <th class="col-palpite">Palpite</th>
+                            <th class="col-pts">Pts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in dados.palpites %}
+                        <tr class="ranking-row">
+                            <td class="col-nome">{{ p.nome }}</td>
+                            <td class="col-palpite">{{ p.gols_casa }} &ndash; {{ p.gols_visitante }}</td>
+                            <td class="col-pts">
+                                <span class="pts-badge pts-badge--{{ p.pontos }}">{{ p.pontos }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="empty-state">Nenhum palpite registrado para este jogo.</p>
+            {% endif %}
+
+        {% else %}
+            {# Rodada aberta: mostrar só o palpite próprio + aviso #}
+            {% if dados.palpites %}
+            <div class="own-palpite-card">
+                <p class="own-palpite-label">Seu palpite</p>
+                <div class="own-palpite-score">
+                    <span>{{ dados.jogo.time_casa }}</span>
+                    <span class="own-palpite-nums">
+                        {{ dados.palpites[0].gols_casa }} &ndash; {{ dados.palpites[0].gols_visitante }}
+                    </span>
+                    <span>{{ dados.jogo.time_visitante }}</span>
+                </div>
+            </div>
+            {% else %}
+            <p class="empty-state">Você ainda não palpitou neste jogo. <a href="/palpites">Ir para Meus palpites.</a></p>
+            {% endif %}
+
+            <div class="privacy-notice">
+                <span class="privacy-notice-icon">&#128274;</span>
+                <p>Palpites liberados após o fechamento da rodada.</p>
+            </div>
+        {% endif %}
+
+    </article>
+
+</section>
+{% endblock %}

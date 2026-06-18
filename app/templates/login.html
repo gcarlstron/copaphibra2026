@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="auth-shell">
+    <div class="auth-card">
+        <p class="eyebrow">Acesso interno</p>
+        <h2>Entrar no bolão</h2>
+        <form method="post" action="/login" class="auth-form">
+            <label>
+                Usuário
+                <input type="text" name="username" autocomplete="username" required>
+            </label>
+            <label>
+                Senha
+                <input type="password" name="senha" autocomplete="current-password" required>
+            </label>
+            <button type="submit">Entrar</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

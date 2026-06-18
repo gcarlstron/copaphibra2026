@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.database import get_db
+from app.routers.auth import get_current_user
+from app.services.jogos import detalhe_do_jogo
+
+router = APIRouter(prefix="/jogos")
+
+
+def _templates() -> Jinja2Templates:
+    settings = get_settings()
+    return Jinja2Templates(directory=str(settings.templates_dir))
+
+
+@router.get("/{jogo_id}", response_class=HTMLResponse)
+def jogo_detalhe(
+    jogo_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> Response:
+    if current_user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    try:
+        dados = detalhe_do_jogo(
+            db=db,
+            jogo_id=jogo_id,
+            usuario=current_user,
+            agora=datetime.now(timezone.utc),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    settings = get_settings()
+    templates = _templates()
+    return templates.TemplateResponse(
+        request,
+        "jogo_detalhe.html",
+        {
+            "app_name": settings.app_name,
+            "user_id": current_user.id,
+            "is_admin": current_user.is_admin,
+            "dados": dados,
+        },
+    )

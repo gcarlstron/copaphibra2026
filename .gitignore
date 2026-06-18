@@ -1,0 +1,23 @@
+# Ambiente virtual
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Banco local (SQLite) — NUNCA versionar dados/db
+*.db
+*.sqlite
+*.sqlite3
+
+# Segredos / ambiente
+.env
+.env.*
+!.env.example
+
+# SO / editores
+.DS_Store
+Thumbs.db
