@@ -908,6 +908,47 @@ body::before {
     color: #475569;
 }
 
+/* Jogo ao vivo (em andamento) + intervalo */
+.status-pill--ao-vivo {
+    background: #fee2e2;
+    color: #b91c1c;
+    gap: 6px;
+}
+
+.status-pill--intervalo {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+.live-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #dc2626;
+    animation: live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.65); }
+}
+
+/* Destaque do bloco/linha de jogos ao vivo no dashboard */
+.live-card {
+    border-color: rgba(220, 38, 38, 0.3);
+}
+
+.result-row--live {
+    border-color: rgba(220, 38, 38, 0.35);
+    background: rgba(254, 226, 226, 0.45);
+}
+
+.result-row--live:hover {
+    background: rgba(254, 226, 226, 0.85);
+    border-color: rgba(220, 38, 38, 0.5);
+}
+
 /* Coluna de data na tabela admin */
 .col-datetime {
     white-space: nowrap;

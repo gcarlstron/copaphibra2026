@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.routers.auth import get_current_user
+from app.services.dashboard import STATUS_AO_VIVO
 from app.services.jogos import detalhe_do_jogo, listar_todos_os_jogos
 
 router = APIRouter(prefix="/jogos")
@@ -33,6 +34,9 @@ def jogos_lista(
     dados = listar_todos_os_jogos(db=db, usuario=current_user)
 
     settings = get_settings()
+    tem_ao_vivo = any(
+        j.status in STATUS_AO_VIVO for grupo in dados.grupos for j in grupo.jogos
+    )
     templates = _templates()
     return templates.TemplateResponse(
         request,
@@ -42,6 +46,7 @@ def jogos_lista(
             "user_id": current_user.id,
             "is_admin": current_user.is_admin,
             "dados": dados,
+            "auto_refresh_s": settings.auto_refresh_ao_vivo_s if tem_ao_vivo else None,
         },
     )
 
@@ -76,5 +81,10 @@ def jogo_detalhe(
             "user_id": current_user.id,
             "is_admin": current_user.is_admin,
             "dados": dados,
+            "auto_refresh_s": (
+                settings.auto_refresh_ao_vivo_s
+                if dados.jogo.status in STATUS_AO_VIVO
+                else None
+            ),
         },
     )

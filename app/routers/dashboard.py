@@ -53,5 +53,6 @@ def dashboard(
             "user_id": current_user.id,
             "is_admin": current_user.is_admin,
             "dados": dados,
+            "auto_refresh_s": settings.auto_refresh_ao_vivo_s if dados.jogos_ao_vivo else None,
         },
     )

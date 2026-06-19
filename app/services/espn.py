@@ -37,6 +37,13 @@ ESPN_SCOREBOARD_URL = (
     "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
 )
 ESPN_STATUS_FULL_TIME = "STATUS_FULL_TIME"
+ESPN_STATUS_SCHEDULED = "STATUS_SCHEDULED"
+ESPN_STATUS_HALFTIME = "STATUS_HALFTIME"
+
+# `status.type.state` da ESPN: "pre" (agendado), "in" (em andamento), "post" (fim).
+ESPN_STATE_PRE = "pre"
+ESPN_STATE_IN = "in"
+ESPN_STATE_POST = "post"
 
 
 class EspnClientError(RuntimeError):
@@ -53,6 +60,23 @@ class EventoEspn:
     gols_visitante: int | None
     status: str
     encerrado: bool
+    estado: str = ""  # status.type.state: "pre" | "in" | "post" (default "" = ausente)
+
+    @property
+    def ao_vivo(self) -> bool:
+        """True se o jogo está em andamento (inclui o intervalo)."""
+        if self.encerrado:
+            return False
+        if self.estado:
+            return self.estado == ESPN_STATE_IN
+        # Fallback quando a ESPN não envia `state`: qualquer status que não seja
+        # agendado/vazio é tratado como ao vivo.
+        return self.status not in ("", ESPN_STATUS_SCHEDULED)
+
+    @property
+    def no_intervalo(self) -> bool:
+        """True se o jogo está no intervalo."""
+        return self.ao_vivo and self.status == ESPN_STATUS_HALFTIME
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +99,9 @@ def parse_eventos(payload: dict) -> list[EventoEspn]:
                 continue
             comp = competitions[0]
 
-            status_name: str = (
-                comp.get("status", {}).get("type", {}).get("name", "") or ""
-            )
+            status_type = comp.get("status", {}).get("type", {})
+            status_name: str = status_type.get("name", "") or ""
+            estado: str = status_type.get("state", "") or ""
             encerrado = status_name == ESPN_STATUS_FULL_TIME
 
             competitors = comp.get("competitors", [])
@@ -117,6 +141,7 @@ def parse_eventos(payload: dict) -> list[EventoEspn]:
                     gols_visitante=gols_visitante,
                     status=status_name,
                     encerrado=encerrado,
+                    estado=estado,
                 )
             )
         except Exception:

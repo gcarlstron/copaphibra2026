@@ -9,7 +9,9 @@
       "Bash(alembic:*)",
       "Bash(ruff:*)",
       "Bash(black:*)",
-      "Bash(C:/Users/PHIBRA/source/repos/CopaPhibra/.venv/Scripts/python.exe -m pytest -q)"
+      "Bash(C:/Users/PHIBRA/source/repos/CopaPhibra/.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(.venv/Scripts/python.exe --version)",
+      "Bash(.venv/Scripts/python.exe -m pytest -q)"
     ]
   }
 }

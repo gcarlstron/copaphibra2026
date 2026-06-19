@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "macros.html" import status_pill %}
 
 {% block content %}
 <section class="page-section">
@@ -38,6 +39,32 @@
             <a href="/palpites" class="btn-primary btn-sm">Palpitar agora</a>
         </div>
     </div>
+    {% endif %}
+
+    {# ── Jogos ao vivo ────────────────────────────────────────────── #}
+    {% if dados.jogos_ao_vivo %}
+    <article class="round-card live-card">
+        <header class="round-head">
+            <div>
+                <h3>Ao vivo agora</h3>
+                <p class="muted">Atualiza automaticamente enquanto a bola rola</p>
+            </div>
+        </header>
+        <div class="match-list">
+            {% for jogo in dados.jogos_ao_vivo %}
+            <a href="/jogos/{{ jogo.jogo_id }}" class="result-row result-row--live">
+                <span class="result-team result-team--casa">{{ jogo.time_casa }}</span>
+                <span class="result-score">
+                    {{ jogo.gols_casa if jogo.gols_casa is not none else '0' }}
+                    <span class="result-vs">x</span>
+                    {{ jogo.gols_visitante if jogo.gols_visitante is not none else '0' }}
+                </span>
+                <span class="result-team result-team--visitante">{{ jogo.time_visitante }}</span>
+                <span class="result-date">{{ status_pill(jogo.status) }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </article>
     {% endif %}
 
     {# ── Tabela de classificação ──────────────────────────────────── #}

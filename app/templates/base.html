@@ -36,5 +36,12 @@
             {% block content %}{% endblock %}
         </main>
     </div>
+
+    {# Auto-refresh enquanto há jogo ao vivo na página (definido pela rota). #}
+    {% if auto_refresh_s %}
+    <script>
+        setTimeout(function () { window.location.reload(); }, {{ auto_refresh_s }} * 1000);
+    </script>
+    {% endif %}
 </body>
 </html>

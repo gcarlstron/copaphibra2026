@@ -18,7 +18,12 @@ from app.models import Jogo, Palpite, Rodada, Usuario
 from app.models.sync_state import SyncState
 from app.models.team_alias import TeamAlias
 from app.services.auth import hash_senha
-from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO
+from app.services.dashboard import (
+    STATUS_AGENDADO,
+    STATUS_EM_ANDAMENTO,
+    STATUS_ENCERRADO,
+    STATUS_INTERVALO,
+)
 from app.services.espn import EspnClientError, EventoEspn
 from app.services.sync_resultados import (
     CHAVE_SYNC,
@@ -115,6 +120,24 @@ def _evento_encerrado(
         gols_visitante=gols_v,
         status="STATUS_FULL_TIME",
         encerrado=True,
+    )
+
+
+def _evento_ao_vivo(
+    abrev_casa: str,
+    abrev_vis: str,
+    gols_c: int | None,
+    gols_v: int | None,
+    intervalo: bool = False,
+) -> EventoEspn:
+    return EventoEspn(
+        abrev_casa=abrev_casa,
+        abrev_visitante=abrev_vis,
+        gols_casa=gols_c,
+        gols_visitante=gols_v,
+        status="STATUS_HALFTIME" if intervalo else "STATUS_FIRST_HALF",
+        encerrado=False,
+        estado="in",
     )
 
 
@@ -551,3 +574,165 @@ class TestEventoEncerradoSemPlacar:
         assert resumo.lancados == 0
         db_session.refresh(jogo)
         assert jogo.status == STATUS_AGENDADO
+
+
+# ---------------------------------------------------------------------------
+# Atualização de jogos AO VIVO (em andamento / intervalo) — sem pontuar
+# ---------------------------------------------------------------------------
+
+
+class TestAtualizacaoAoVivo:
+    def test_atualiza_status_e_placar_sem_pontuar(self, db_session: Session) -> None:
+        """Jogo ao vivo: status vira em_andamento, placar é gravado, pontos NÃO mudam."""
+        _, jogo, _, palpite = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        evento = _evento_ao_vivo("MEX", "RSA", 1, 0)
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[evento],
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.lancados == 0
+        assert resumo.atualizados_ao_vivo == 1
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_EM_ANDAMENTO
+        assert jogo.gols_casa == 1
+        assert jogo.gols_visitante == 0
+        # Pontos NÃO podem ter sido calculados enquanto o jogo está em andamento.
+        db_session.refresh(palpite)
+        assert palpite.pontos == 0
+
+    def test_intervalo(self, db_session: Session) -> None:
+        """Evento no intervalo deve marcar status=intervalo."""
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        evento = _evento_ao_vivo("MEX", "RSA", 2, 1, intervalo=True)
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[evento],
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.atualizados_ao_vivo == 1
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_INTERVALO
+        assert jogo.gols_casa == 2
+        assert jogo.gols_visitante == 1
+
+    def test_idempotente_sem_mudanca(self, db_session: Session) -> None:
+        """Rodar duas vezes com o mesmo evento ao vivo não conta atualização na 2ª."""
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        evento = _evento_ao_vivo("MEX", "RSA", 1, 0)
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[evento],
+        ):
+            r1 = sincronizar_resultados(db_session, _AGORA)
+            r2 = sincronizar_resultados(db_session, _AGORA)
+
+        assert r1.atualizados_ao_vivo == 1
+        assert r2.atualizados_ao_vivo == 0
+
+    def test_ao_vivo_depois_encerra_e_pontua(self, db_session: Session) -> None:
+        """Após ao vivo, quando o evento vira FULL_TIME, encerra e recalcula pontos."""
+        _, jogo, _, palpite = _seed_base(db_session)  # palpite MEX 1×0
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        # 1) Ao vivo 1×0
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_ao_vivo("MEX", "RSA", 1, 0)],
+        ):
+            sincronizar_resultados(db_session, _AGORA)
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_EM_ANDAMENTO
+
+        # 2) Encerra 2×0 → palpite 1×0: vencedor certo + gols do perdedor (0) = 4 pts
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_encerrado("MEX", "RSA", 2, 0)],
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.lancados == 1
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_ENCERRADO
+        assert jogo.gols_casa == 2 and jogo.gols_visitante == 0
+        db_session.refresh(palpite)
+        assert palpite.pontos == 4
+
+
+# ---------------------------------------------------------------------------
+# Throttle dinâmico — intervalo curto enquanto há jogo ao vivo
+# ---------------------------------------------------------------------------
+
+
+class TestIntervaloDinamico:
+    def _make_factory(self, db_session: Session):
+        def factory():
+            return db_session
+
+        return factory
+
+    def _settings_mock(self):
+        return MagicMock(
+            espn_sync_intervalo_min=15,
+            espn_sync_intervalo_ao_vivo_min=1,
+            espn_timeout_s=5,
+        )
+
+    def test_com_jogo_ao_vivo_usa_intervalo_curto(self, db_session: Session) -> None:
+        """Com jogo ao vivo, uma execução 2 min após a anterior deve disparar (intervalo=1)."""
+        from datetime import timedelta
+
+        # Jogo em andamento iniciado há 1h (dentro da janela de 3h)
+        rodada = Rodada(nome="Rodada 1", ordem=1, aberta=False)
+        db_session.add(rodada)
+        db_session.flush()
+        db_session.add(
+            Jogo(
+                rodada_id=rodada.id,
+                data_hora=_AGORA - timedelta(hours=1),
+                time_casa="EUA",
+                time_visitante="Austrália",
+                status=STATUS_EM_ANDAMENTO,
+            )
+        )
+        estado = SyncState(chave=CHAVE_SYNC, ultima_execucao=_AGORA - timedelta(minutes=2))
+        db_session.add(estado)
+        db_session.commit()
+
+        mock_sync = MagicMock(return_value=ResumoSync())
+        with patch("app.services.sync_resultados.sincronizar_resultados", mock_sync), \
+             patch("app.services.sync_resultados.get_settings", return_value=self._settings_mock()):
+            disparar_sync_se_necessario(self._make_factory(db_session), _AGORA)
+
+        mock_sync.assert_called_once()
+
+    def test_sem_jogo_ao_vivo_usa_intervalo_normal(self, db_session: Session) -> None:
+        """Sem jogo ao vivo, 2 min após a anterior NÃO dispara (intervalo=15)."""
+        from datetime import timedelta
+
+        estado = SyncState(chave=CHAVE_SYNC, ultima_execucao=_AGORA - timedelta(minutes=2))
+        db_session.add(estado)
+        db_session.commit()
+
+        mock_sync = MagicMock(return_value=ResumoSync())
+        with patch("app.services.sync_resultados.sincronizar_resultados", mock_sync), \
+             patch("app.services.sync_resultados.get_settings", return_value=self._settings_mock()):
+            disparar_sync_se_necessario(self._make_factory(db_session), _AGORA)
+
+        mock_sync.assert_not_called()

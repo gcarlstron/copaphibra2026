@@ -13,7 +13,7 @@ Substitui as planilhas manuais usadas hoje. App web simples, de uso interno (~10
 - **Backend/UI:** FastAPI (Python 3.11+), server-rendered com **Jinja2 + HTMX + CSS**
 - **Banco:** SQLite no início (arquivo local) → pronto para PostgreSQL
 - **ORM/Migrations:** SQLAlchemy + Alembic
-- **Auth:** sessão por cookie + senha com hash (passlib/bcrypt)
+- **Auth:** sessão por cookie + senha com hash (lib `bcrypt`)
 - App **único** — sem mobile, sem repo de frontend separado, sem Figma, sem serviços de nuvem
 
 ## Estrutura
@@ -47,7 +47,7 @@ tests/
 3. **Prazo por Rodada** (controle manual do admin): rodada aberta = `aberta == True AND (sem janela OU abertura ≤ agora ≤ fechamento)`. **Revalidar sempre no backend** ao salvar palpite — nunca confiar só na tela.
 4. **Privacidade:** palpites de outros jogadores só ficam visíveis **depois que a rodada fecha**.
 5. **Autorização:** usuário edita só o próprio palpite; lançar resultado e gerenciar rodadas exige `is_admin`.
-6. **Senha sempre com hash** (passlib) — nunca texto puro. Sem segredos no código (usar variáveis de ambiente).
+6. **Senha sempre com hash** (lib `bcrypt`, em `app/services/auth.py`) — nunca texto puro. Sem segredos no código (usar variáveis de ambiente).
 7. **Alembic:** nunca editar uma migração já aplicada — sempre criar uma nova.
 
 ## Convenções de código

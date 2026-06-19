@@ -210,6 +210,24 @@ resetava via `/admin/usuarios`). Lógica em `services/auth.py`; senha sempre com
 - [x] ✅ `routers/auth.py` — `GET /trocar-senha` (form, anônimo→/login) e `POST /trocar-senha` (re-renderiza com banner de erro 400 ou sucesso); helper `_templates()` → @backend — 2026-06-19
 - [x] ✅ `tests/test_auth.py` — sucesso (novo hash bate, antigo não); senha atual incorreta; confirmação diferente; nova curta; nova igual à atual; exige login (GET+POST) — 6 testes → @backend — 2026-06-19
 - [x] ✅ `templates/trocar_senha.html` (reusa estilos `auth-*`) + link "Trocar senha" no `base.html` + estilos `.auth-message` (erro/ok) no `app.css` → @frontend — 2026-06-19
+- [x] ✅ Remoção do `passlib`: `app/services/auth.py` passa a usar a lib `bcrypt` diretamente (`hashpw`/`checkpw`/`gensalt`). Motivo: `passlib` 1.7.4 é incompatível com Python 3.13+ (módulo `crypt` removido) e disparava `(trapped) error reading bcrypt version` com bcrypt >= 4.1. Hash `$2b$` idêntico — hashes legados seguem válidos (verificado). `requirements.txt`: `bcrypt>=4.0,<5.0` (passlib removido); docs atualizadas (CLAUDE/DEPLOY/HANDOFF). **183 testes, 0 avisos** → @backend — 2026-06-19
+- [ ] Push do código → dispara deploy no Render
+
+---
+
+## Fase 13 — Estados do jogo ao vivo + atualização automática (concluída — 2026-06-19)
+
+Jogos passam a ter 4 estados (`agendado`, `em_andamento`, `intervalo`, `encerrado`),
+detectados via ESPN. Enquanto a bola rola, o sync busca mais rápido e a página atualiza
+sozinha. Sem migração (`status` String(20) comporta os valores novos). **198 testes passando.**
+
+- [x] ✅ `services/espn.py` — `EventoEspn` ganha `estado` (`type.state`: pre/in/post, default "") + propriedades `ao_vivo`/`no_intervalo` (com fallback por `type.name` quando `state` ausente); constantes `ESPN_STATUS_HALFTIME`/`SCHEDULED`, `ESPN_STATE_*` → @backend — 2026-06-19
+- [x] ✅ `services/dashboard.py` — constantes `STATUS_EM_ANDAMENTO`/`STATUS_INTERVALO`/`STATUS_AO_VIVO`; `_montar_jogos_ao_vivo` + campo `jogos_ao_vivo` em `DashboardData` (excluídos de recentes/próximos por status) → @backend — 2026-06-19
+- [x] ✅ `services/sync_resultados.py` — passo 5b atualiza status/placar de jogos ao vivo **sem pontuar** (só FULL_TIME→`lancar_resultado` pontua); idempotente; contador `atualizados_ao_vivo`. Throttle **dinâmico**: `_intervalo_efetivo_min` usa intervalo curto (`espn_sync_intervalo_ao_vivo_min`=1) quando há jogo ao vivo/iniciado há <3h, senão 15 min → @backend — 2026-06-19
+- [x] ✅ `config.py` — `espn_sync_intervalo_ao_vivo_min` (1) e `auto_refresh_ao_vivo_s` (60) → @backend — 2026-06-19
+- [x] ✅ Auto-refresh: `base.html` recarrega a cada `auto_refresh_s`s quando a flag é passada; rotas `/`, `/jogos`, `/jogos/{id}` passam a flag só quando há jogo ao vivo na página → @backend + @frontend — 2026-06-19
+- [x] ✅ `templates/macros.html` — macro `status_pill(status)` reusado em dashboard/lista/detalhe/admin; seção "Ao vivo agora" no dashboard; CSS `.status-pill--ao-vivo` (ponto pulsante), `--intervalo`, `.live-card`, `.result-row--live` → @frontend — 2026-06-19
+- [x] ✅ Testes: `test_espn.py` (estado/ao_vivo/intervalo/fallback); `test_sync_resultados.py` (atualiza ao vivo sem pontuar, intervalo, idempotência, ao vivo→encerra→pontua, throttle dinâmico); `test_dashboard.py` (jogos_ao_vivo) — +15 testes → @backend — 2026-06-19
 - [ ] Push do código → dispara deploy no Render
 
 ---

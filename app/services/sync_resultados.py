@@ -44,12 +44,24 @@ from app.models import Jogo
 from app.models.sync_state import SyncState
 from app.models.team_alias import TeamAlias
 from app.services.admin import lancar_resultado
-from app.services.dashboard import STATUS_ENCERRADO
-from app.services.espn import EspnClientError, buscar_scoreboard_com_janela
+from app.services.dashboard import (
+    STATUS_ENCERRADO,
+    STATUS_EM_ANDAMENTO,
+    STATUS_INTERVALO,
+)
+from app.services.espn import (
+    EspnClientError,
+    EventoEspn,
+    buscar_scoreboard_com_janela,
+)
 
 logger = logging.getLogger(__name__)
 
 CHAVE_SYNC = "espn_resultados"
+
+# Janela (horas) após o início em que um jogo ainda pode estar rolando — usada
+# para decidir o intervalo de throttle (busca rápida durante jogos ao vivo).
+_JANELA_JOGO_AO_VIVO_H = 3
 
 
 @dataclass(slots=True)
@@ -57,6 +69,7 @@ class ResumoSync:
     """Resumo do que foi feito em uma execução de sincronização."""
 
     lancados: int = 0
+    atualizados_ao_vivo: int = 0
     ignorados_sem_depara: int = 0
     ignorados_sem_jogo: int = 0
 
@@ -191,6 +204,54 @@ def sincronizar_resultados(
                     "Falha ao lançar resultado jogo_id=%d", jogo.id, exc_info=True
                 )
 
+    # 5b. Atualiza status/placar de jogos AO VIVO (em andamento / intervalo).
+    #     NÃO pontua — só lancar_resultado (FULL_TIME) recalcula Palpite.pontos.
+    #     Reutiliza os eventos já materializados no passo 4.
+    for data_alvo, jogos_do_dia in jogos_por_data.items():
+        ao_vivo_idx: dict[tuple[str, str], EventoEspn] = {}
+        for ev in eventos_por_data[data_alvo]:
+            if not ev.ao_vivo:
+                continue
+            nome_casa = depara.get(ev.abrev_casa)
+            nome_visitante = depara.get(ev.abrev_visitante)
+            if nome_casa is None or nome_visitante is None:
+                continue
+            ao_vivo_idx[(nome_casa, nome_visitante)] = ev
+
+        for jogo in jogos_do_dia:
+            ev = ao_vivo_idx.get((jogo.time_casa, jogo.time_visitante))
+            if ev is None:
+                continue
+
+            jogo_atual = db.get(Jogo, jogo.id)
+            if jogo_atual is None or jogo_atual.status == STATUS_ENCERRADO:
+                continue
+
+            novo_status = STATUS_INTERVALO if ev.no_intervalo else STATUS_EM_ANDAMENTO
+            mudou = (
+                jogo_atual.status != novo_status
+                or jogo_atual.gols_casa != ev.gols_casa
+                or jogo_atual.gols_visitante != ev.gols_visitante
+            )
+            if not mudou:
+                continue
+
+            jogo_atual.status = novo_status
+            jogo_atual.gols_casa = ev.gols_casa
+            jogo_atual.gols_visitante = ev.gols_visitante
+            resumo.atualizados_ao_vivo += 1
+            logger.info(
+                "Jogo ao vivo atualizado: %s %s×%s %s (status=%s, jogo_id=%d)",
+                jogo.time_casa,
+                ev.gols_casa,
+                ev.gols_visitante,
+                jogo.time_visitante,
+                novo_status,
+                jogo.id,
+            )
+
+    db.commit()
+
     # 6. Conta ignorados_sem_jogo reutilizando os eventos já materializados.
     #    Constrói o conjunto completo de pares pendentes para O(1) lookup.
     pares_pendentes: set[tuple[str, str]] = {
@@ -235,6 +296,35 @@ def _get_or_create_sync_state(db: Session, chave: str) -> SyncState:
     return estado
 
 
+def _ha_jogo_ao_vivo_ou_iminente(db: Session, agora: datetime) -> bool:
+    """True se há jogo ao vivo (em andamento/intervalo) ou agendado já iniciado há pouco.
+
+    Cobre tanto um jogo já marcado ao vivo quanto um recém-iniciado que ainda não
+    foi detectado. A janela de `_JANELA_JOGO_AO_VIVO_H` horas evita fast-polling
+    eterno de um jogo que começou mas nunca recebeu resultado.
+    """
+    agora_utc = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
+    limite_inicio = agora_utc - timedelta(hours=_JANELA_JOGO_AO_VIVO_H)
+
+    stmt = (
+        select(Jogo.id)
+        .where(
+            Jogo.status != STATUS_ENCERRADO,
+            Jogo.data_hora <= agora_utc,
+            Jogo.data_hora >= limite_inicio,
+        )
+        .limit(1)
+    )
+    return db.scalar(stmt) is not None
+
+
+def _intervalo_efetivo_min(db: Session, agora: datetime, settings) -> int:
+    """Intervalo de throttle em minutos — curto quando há jogo ao vivo/iminente."""
+    if _ha_jogo_ao_vivo_ou_iminente(db, agora):
+        return settings.espn_sync_intervalo_ao_vivo_min
+    return settings.espn_sync_intervalo_min
+
+
 def disparar_sync_se_necessario(
     db_factory: Callable[[], Session],
     agora: datetime,
@@ -252,7 +342,8 @@ def disparar_sync_se_necessario(
     db = db_factory()
     try:
         settings = get_settings()
-        intervalo_min = settings.espn_sync_intervalo_min
+        # Intervalo dinâmico: ~1 min enquanto há jogo ao vivo; 15 min caso contrário.
+        intervalo_min = _intervalo_efetivo_min(db, agora, settings)
 
         estado = _get_or_create_sync_state(db, CHAVE_SYNC)
 

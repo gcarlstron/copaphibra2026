@@ -1,0 +1,14 @@
+{# Macros compartilhados de apresentação. #}
+
+{# Pílula de status do jogo. Mapeia Jogo.status → label + classe CSS. #}
+{% macro status_pill(status) -%}
+{%- if status == 'encerrado' -%}
+<span class="status-pill status-pill--encerrado">Encerrado</span>
+{%- elif status == 'em_andamento' -%}
+<span class="status-pill status-pill--ao-vivo"><span class="live-dot"></span>Ao vivo</span>
+{%- elif status == 'intervalo' -%}
+<span class="status-pill status-pill--intervalo">Intervalo</span>
+{%- else -%}
+<span class="status-pill status-pill--agendado">Agendado</span>
+{%- endif -%}
+{%- endmacro %}
