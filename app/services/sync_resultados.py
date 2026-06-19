@@ -2,15 +2,15 @@
 
 Fluxo:
   1. `disparar_sync_se_necessario(db_factory, agora)`:
-       - Chamado como BackgroundTask após login bem-sucedido.
+       - Chamado como BackgroundTask ao carregar o dashboard (`GET /`).
        - Lê/cria a linha `SyncState(chave="espn_resultados")`.
        - Verifica throttle: se `ultima_execucao` < `ESPN_SYNC_INTERVALO_MIN` minutos atrás,
          aborta silenciosamente.
        - Grava `ultima_execucao = agora` ANTES de chamar a ESPN (evita corrida em
-         logins simultâneos no Render free).
+         acessos simultâneos no Render free).
        - Abre uma sessão própria (`SessionLocal()`) — a sessão do `Depends(get_db)`
          já estará fechada quando a BackgroundTask rodar.
-       - Envolve TUDO em try/except — nunca propaga exceção para o login.
+       - Envolve TUDO em try/except — nunca propaga exceção para a requisição.
 
   2. `sincronizar_resultados(db, agora)`:
        - Seleciona `Jogo` com `data_hora <= agora` e `status != encerrado`.
@@ -239,15 +239,15 @@ def disparar_sync_se_necessario(
     db_factory: Callable[[], Session],
     agora: datetime,
 ) -> None:
-    """Ponto de entrada para a BackgroundTask do login.
+    """Ponto de entrada para a BackgroundTask do dashboard (`GET /`).
 
     - Abre sessão própria (a sessão do request já está fechada quando esta função
       roda como BackgroundTask).
     - Verifica throttle via `SyncState` persistido no banco.
     - Grava `ultima_execucao = agora` ANTES de chamar a ESPN para evitar corrida
-      em logins simultâneos.
-    - Envolve TUDO em try/except amplo — nunca propaga exceção; o login não pode
-      quebrar por causa de falha na ESPN.
+      em acessos simultâneos.
+    - Envolve TUDO em try/except amplo — nunca propaga exceção; o carregamento do
+      dashboard não pode quebrar por causa de falha na ESPN.
     """
     db = db_factory()
     try:

@@ -1,15 +1,18 @@
-"""Tests for login + ESPN sync integration (Fase 10e).
+"""Tests for dashboard + ESPN sync integration.
 
-Verifica que:
-- Login funciona mesmo se ESPN falhar
-- O login dispara o sync como BackgroundTask
-- Login com credenciais erradas não dispara sync
-- A BackgroundTask recebe uma factory de sessão e um datetime
+O sync de resultados ESPN é disparado ao carregar o dashboard (`GET /`), não mais
+no login. Verifica que:
+- O dashboard dispara o sync como BackgroundTask (usuário autenticado).
+- O dashboard renderiza normalmente mesmo se a ESPN falhar.
+- Acesso anônimo (redirect para /login) NÃO dispara o sync.
+- O login NÃO dispara mais o sync.
+- A BackgroundTask recebe uma factory de sessão e um datetime.
+- O throttle persistido (`SyncState`) respeita a janela mínima.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -34,7 +37,7 @@ _AGORA = datetime(2026, 6, 11, 20, 0, 0, tzinfo=timezone.utc)
 @pytest.fixture()
 def db_session(tmp_path: Path) -> Session:
     engine = create_engine(
-        f"sqlite:///{tmp_path / 'login_sync.db'}",
+        f"sqlite:///{tmp_path / 'dashboard_sync.db'}",
         connect_args={"check_same_thread": False},
     )
     Base.metadata.create_all(engine)
@@ -74,106 +77,97 @@ def _seed_usuario(db: Session, username: str = "user1", senha: str = "senha123")
     return u
 
 
+def _logar(client: TestClient) -> None:
+    """Faz login sem seguir o redirect (não queremos disparar o dashboard ainda)."""
+    resp = client.post(
+        "/login",
+        data={"username": "user1", "senha": "senha123"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+
+
 # ---------------------------------------------------------------------------
-# Testes
+# Gatilho no dashboard
 # ---------------------------------------------------------------------------
 
 
-class TestLoginComSync:
-    def test_login_ok_mesmo_com_espn_falhando(
+class TestDashboardComSync:
+    def test_dashboard_dispara_sync(self, client: TestClient, db_session: Session) -> None:
+        """Carregar o dashboard (autenticado) deve adicionar o sync como BackgroundTask."""
+        _seed_usuario(db_session)
+        _logar(client)
+
+        mock_disparar = MagicMock()
+        with patch("app.routers.dashboard.disparar_sync_se_necessario", mock_disparar):
+            resp = client.get("/")
+
+        assert resp.status_code == 200
+        # TestClient executa BackgroundTasks sincronamente após a resposta
+        mock_disparar.assert_called_once()
+
+    def test_dashboard_ok_mesmo_com_espn_falhando(
         self, client: TestClient, db_session: Session
     ) -> None:
-        """Login deve funcionar mesmo que sincronizar_resultados lance exceção.
+        """Dashboard deve renderizar mesmo que sincronizar_resultados lance exceção.
 
-        A exceção é absovida dentro de disparar_sync_se_necessario pelo try/except
-        amplo — nunca deve propagar para o BackgroundTask e quebrar o login.
+        A exceção é absorvida dentro de disparar_sync_se_necessario pelo try/except
+        amplo — nunca deve propagar e quebrar o carregamento da página.
         """
         _seed_usuario(db_session)
+        _logar(client)
 
-        # Deixa disparar_sync_se_necessario rodar de verdade (com sua sessão própria),
-        # mas faz sincronizar_resultados falhar — o try/except interno deve absorver.
         with patch(
             "app.services.sync_resultados.sincronizar_resultados",
             side_effect=RuntimeError("ESPN caiu"),
         ):
-            resp = client.post(
-                "/login",
-                data={"username": "user1", "senha": "senha123"},
-                follow_redirects=False,
-            )
+            resp = client.get("/")
 
-        assert resp.status_code == 303
-        assert resp.headers["location"] == "/"
+        assert resp.status_code == 200
 
-    def test_login_redireciona_para_dashboard(
+    def test_dashboard_anonimo_nao_dispara_sync(
         self, client: TestClient, db_session: Session
     ) -> None:
-        """Login bem-sucedido deve redirecionar para /."""
-        _seed_usuario(db_session)
-
-        with patch(
-            "app.routers.auth.disparar_sync_se_necessario", return_value=None
-        ):
-            resp = client.post(
-                "/login",
-                data={"username": "user1", "senha": "senha123"},
-                follow_redirects=False,
-            )
-
-        assert resp.status_code == 303
-        assert resp.headers["location"] == "/"
-
-    def test_login_credenciais_erradas_nao_dispara_sync(
-        self, client: TestClient, db_session: Session
-    ) -> None:
-        """Login com senha errada não deve disparar o sync."""
+        """Acesso anônimo redireciona para /login e NÃO dispara o sync."""
         _seed_usuario(db_session)
 
         mock_disparar = MagicMock()
-        with patch("app.routers.auth.disparar_sync_se_necessario", mock_disparar):
-            resp = client.post(
-                "/login",
-                data={"username": "user1", "senha": "errada"},
-                follow_redirects=False,
-            )
+        with patch("app.routers.dashboard.disparar_sync_se_necessario", mock_disparar):
+            resp = client.get("/", follow_redirects=False)
 
-        assert resp.status_code == 401
+        assert resp.status_code == 303
+        assert resp.headers["location"] == "/login"
         mock_disparar.assert_not_called()
 
-    def test_sync_usa_sessao_propria(
+    def test_dashboard_sync_usa_sessao_propria(
         self, client: TestClient, db_session: Session
     ) -> None:
-        """Verifica que disparar_sync_se_necessario recebe uma factory de sessão."""
+        """O sync recebe uma factory de sessão (SessionLocal) e um datetime."""
         _seed_usuario(db_session)
+        _logar(client)
 
         captured_args: list = []
 
         def _fake_disparar(db_factory, agora):
             captured_args.append((db_factory, agora))
 
-        with patch("app.routers.auth.disparar_sync_se_necessario", _fake_disparar):
-            resp = client.post(
-                "/login",
-                data={"username": "user1", "senha": "senha123"},
-                follow_redirects=False,
-            )
+        with patch("app.routers.dashboard.disparar_sync_se_necessario", _fake_disparar):
+            resp = client.get("/")
 
-        assert resp.status_code == 303
-        # TestClient executa BackgroundTasks sincronamente
+        assert resp.status_code == 200
         assert len(captured_args) == 1
         db_factory, agora = captured_args[0]
-        # db_factory deve ser chamável (SessionLocal)
         assert callable(db_factory)
         assert isinstance(agora, datetime)
 
-    def test_sync_dispara_no_login_bem_sucedido(
-        self, client: TestClient, db_session: Session
-    ) -> None:
-        """Login bem-sucedido deve adicionar o sync como BackgroundTask."""
+
+class TestLoginNaoDisparaMaisSync:
+    def test_login_nao_chama_sync(self, client: TestClient, db_session: Session) -> None:
+        """O login não deve mais disparar o sync — o gatilho mudou para o dashboard."""
         _seed_usuario(db_session)
 
         mock_disparar = MagicMock()
-        with patch("app.routers.auth.disparar_sync_se_necessario", mock_disparar):
+        with patch("app.routers.dashboard.disparar_sync_se_necessario", mock_disparar):
             resp = client.post(
                 "/login",
                 data={"username": "user1", "senha": "senha123"},
@@ -181,27 +175,23 @@ class TestLoginComSync:
             )
 
         assert resp.status_code == 303
-        # TestClient roda BackgroundTasks inline
-        mock_disparar.assert_called_once()
+        assert resp.headers["location"] == "/"
+        mock_disparar.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
-# Throttle tests — verificados em test_sync_resultados.py com sessão isolada
-# Os testes abaixo cobrem o comportamento de throttle a nível de BackgroundTask
+# Throttle — testado direto em disparar_sync_se_necessario com sessão controlada
 # ---------------------------------------------------------------------------
 
 
 class TestThrottleViaDispararSync:
-    """Testa o throttle diretamente em disparar_sync_se_necessario com sessão controlada."""
-
     def _make_factory(self, db_session: Session):
         def factory():
             return db_session
+
         return factory
 
-    def test_throttle_dentro_da_janela_nao_chama_sync(
-        self, db_session: Path
-    ) -> None:
+    def test_throttle_dentro_da_janela_nao_chama_sync(self, db_session: Session) -> None:
         """Segunda chamada dentro da janela não deve executar o sync."""
         from app.models.sync_state import SyncState
         from app.services.sync_resultados import CHAVE_SYNC, disparar_sync_se_necessario
@@ -212,8 +202,6 @@ class TestThrottleViaDispararSync:
 
         mock_sync = MagicMock(return_value=ResumoSync())
         factory = self._make_factory(db_session)
-
-        from datetime import timedelta
 
         agora2 = _AGORA + timedelta(minutes=5)  # dentro da janela de 15 min
         with patch(
@@ -228,8 +216,6 @@ class TestThrottleViaDispararSync:
 
     def test_throttle_apos_janela_chama_sync(self, db_session: Session) -> None:
         """Após a janela de throttle, o sync deve ser chamado."""
-        from datetime import timedelta
-
         from app.models.sync_state import SyncState
         from app.services.sync_resultados import CHAVE_SYNC, disparar_sync_se_necessario
 
