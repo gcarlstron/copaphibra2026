@@ -12,12 +12,20 @@ Este documento resume o estado atual do projeto para retomada por outra IA ou po
 - Fase 6 concluída: dashboard/classificação (`GET /` em router dedicado) e detalhe do jogo (`GET /jogos/{id}`), com UI definitiva.
 - Fase 7 concluída: Admin completo — `services/admin.py` + `routers/admin.py` + telas `admin/` (rodadas, jogos, usuários). Lançamento de resultado recalcula `Palpite.pontos` de todos os palpites do jogo.
 - Fase 8 concluída: `scripts/importar_planilha.py` carregou a fase de grupos (10 jogadores, 3 rodadas, 72 jogos, 480 palpites) a partir de `import/COPA PHIBRA 2026 OFICIAL ATÉ A FINAL SEGUNDA FASE.xlsx`. QA aprovou: os 10 totais por jogador batem com a planilha.
-- Fase 9 (fechamento) quase concluída: revisão final de QA do sistema inteiro feita; 3 bloqueantes corrigidos (crash de timezone em `/palpites`, `SECRET_KEY` guard em produção, cookie de sessão endurecido) + importantes (gols negativos validados no backend, `bcrypt<5.0` pinado). Deploy preparado (`DEPLOY.md`, `.env.example`, README). Suíte em **101 testes, tudo passando**. Falta só a ação de deploy no servidor (operador).
+- Fase 9 concluída: revisão final de QA do sistema inteiro; 3 bloqueantes corrigidos (crash de timezone em `/palpites`, `SECRET_KEY` guard em produção, cookie de sessão endurecido) + importantes (gols negativos validados no backend, `bcrypt<5.0` pinado). Deploy preparado e **executado**: app no ar no Render + Neon, testado pelo operador.
+- Fase 10 concluída (implementação): busca automática de resultados via ESPN, disparada no login (background, throttle persistido em `sync_state`, isolamento total de erro). De-para por abreviação FIFA (`team_alias`, 48 times). Reusa `admin.lancar_resultado`. Cliente `httpx2`. QA auditou o caminho do login (PRONTA). Suíte em **155 testes**. Migração + seed já aplicados na Neon. **Falta o push do código** para o Render servir a feature.
 
 ## Próxima Etapa
 
-- **Deploy escolhido: Render (web service free) + Neon (Postgres free).** App já pronto para Postgres (`psycopg`, normalização de `DATABASE_URL`, `render.yaml`). Seguir `DEPLOY.md` Opção A: criar banco na Neon → subir repo privado no GitHub → Blueprint no Render → definir `DATABASE_URL`/`SECRET_KEY`/`DEBUG=0`/`SESSION_HTTPS_ONLY=1` → carga inicial (`criar_admin` + `importar_planilha`) contra a Neon → trocar senha do admin.
-- Opcional: limpar os follow-ups técnicos abaixo antes de considerar o projeto 100% fechado.
+- **Push do código** (`git push`) → dispara o deploy no Render; a partir daí o sync roda no login em produção. (Migração `7b24c90f7905` e seed do de-para JÁ aplicados na Neon; o `alembic upgrade head` do deploy será no-op.)
+- (Opcional) Backfill imediato dos resultados na Neon: rodar o sync uma vez, ou deixar o 1º login preencher.
+- Pós-deploy ainda pendente: trocar senha do `admin` (`admin123`); rotacionar a senha do banco na Neon (foi compartilhada em texto).
+- Possível próximo: indicador "última atualização" no dashboard (Fase 10g, opcional); limpar follow-ups técnicos abaixo.
+
+### Arquitetura da Fase 10 (para quem continuar)
+- `services/espn.py` (cliente + parser puro, resolve home/away por `homeAway`), `services/sync_resultados.py` (`sincronizar_resultados` + `disparar_sync_se_necessario`), `models/team_alias.py` + `models/sync_state.py`, `scripts/seed_team_alias.py`, hook em `routers/auth.py` (`BackgroundTasks`).
+- ESPN: `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=AAAAMMDD` (campos: `competitors[].team.abbreviation`, `.score`, `.homeAway`, `status.type.name`=`STATUS_FULL_TIME`).
+- Credenciais: admin = `admin`/`admin123`; jogadores = primeiro nome minúsculo / `copaphibra2026`.
 
 ## Pendências e follow-ups (não bloqueantes)
 

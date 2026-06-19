@@ -1,15 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import get_db
+from app.database import SessionLocal, get_db
 from app.models import Usuario
 from app.services.auth import verificar_senha
+from app.services.sync_resultados import disparar_sync_se_necessario
 
 router = APIRouter()
 
@@ -38,6 +41,7 @@ def login_form(request: Request) -> HTMLResponse:
 @router.post("/login")
 def login(
     request: Request,
+    background_tasks: BackgroundTasks,
     username: str = Form(...),
     senha: str = Form(...),
     db: Session = Depends(get_db),
@@ -49,6 +53,16 @@ def login(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais inválidas")
 
     request.session["user_id"] = usuario.id
+
+    # Dispara sync de resultados ESPN em background — não bloqueia a resposta.
+    # A sessão do Depends(get_db) estará fechada quando a task rodar;
+    # por isso a task abre sua própria sessão via SessionLocal.
+    background_tasks.add_task(
+        disparar_sync_se_necessario,
+        SessionLocal,
+        datetime.now(timezone.utc),
+    )
+
     response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
     return response
 

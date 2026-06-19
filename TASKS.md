@@ -126,12 +126,51 @@ _Follow-ups do QA (não bloqueantes, ver HANDOFF):_
   - Testes novos: regressão timezone, gols negativos, bordas de scoring (0x0→9, empate placar errado→6), autorização nas rotas admin POST. Suíte: **101 passando**.
 - [x] ✅ Preparar deploy interno — `DEPLOY.md` (passos + checklist), `.env.example`, `README.md` atualizado (dev × produção, env vars). Rodar com `uvicorn app.main:app --env-file .env ...` → 2026-06-18
 - [x] ✅ Preparar deploy em nuvem (Render + Neon) — `psycopg[binary]` no `requirements.txt`; `DATABASE_URL` normalizado para `postgresql+psycopg://` em `app/database.py` e `migrations/env.py`; `render.yaml` (Blueprint free); `.gitignore`; seção Render+Neon no `DEPLOY.md`. Suíte: **109 testes** → @backend — 2026-06-18
-- [ ] Deploy propriamente dito — criar Neon, subir no GitHub (repo privado), conectar no Render, definir env vars, rodar carga inicial (`criar_admin` + `importar_planilha`) contra a Neon — ação do operador, ver `DEPLOY.md` (Opção A)
+- [x] ✅ Repo no GitHub (`gcarlstron/copaphibra2026`, push da branch `main`) — 2026-06-18
+- [x] ✅ Banco Neon criado, migrado e populado (admin + 10 jogadores + 3 rodadas + 72 jogos + 480 palpites; totais conferem) — 2026-06-18
+- [x] ✅ Fix de portabilidade da migração (boolean `sa.false()/sa.true()`) para o Postgres da Neon — 2026-06-18
+- [x] ✅ Web service no Render criado e no ar (Blueprint + `DATABASE_URL` da Neon), testado — 2026-06-19
+- [ ] Pós-deploy: trocar senha do `admin`; (recomendado) rotacionar a senha do banco na Neon, pois foi compartilhada em texto
+
+---
+
+## Fase 10 — Resultados automáticos (ESPN) — concluída (2026-06-19)
+
+Busca automática de resultados via API pública da ESPN (sem auth), disparada no login de
+qualquer usuário, em background, com throttle persistido e isolamento total de erro. Reusa
+`admin.lancar_resultado` (não reimplementa pontuação). Cruzamento por **abreviação FIFA**
+via tabela de-para. Cliente HTTP: `httpx2` (`import httpx2 as httpx`). **155 testes passando.**
+QA auditou (caminho crítico do login): veredito PRONTA, 2 importantes corrigidos.
+
+### 10a — Throttle persistente (`sync_state`)
+- [x] ✅ Model `SyncState` (`chave` única, `ultima_execucao`) + migração `7b24c90f7905` (revises a inicial) + `tests/test_sync_state.py` → @backend — 2026-06-19
+
+### 10b — De-para de times (`team_alias`)
+- [x] ✅ Model `TeamAlias` (`abreviacao` única, `nome` PT-BR, `nome_en`) + tabela na mesma migração + `scripts/seed_team_alias.py` idempotente (48 times, casa por acento-insensível com o banco) + `tests/test_team_alias.py` → @backend — 2026-06-19
+
+### 10c — Cliente ESPN (`services/espn.py`)
+- [x] ✅ `parse_eventos` (puro, tolerante; resolve home/away por `homeAway`) + `buscar_scoreboard`/`buscar_scoreboard_com_janela` (httpx2, timeout) + `tests/test_espn.py` (fixture real, MockTransport, sem rede) → @backend — 2026-06-19
+
+### 10d — Service de sync (`services/sync_resultados.py`)
+- [x] ✅ `sincronizar_resultados(db, agora)` — seleciona pendentes passados, 1 fetch por data (materializado, sem 2ª passagem), cruza por de-para, só FULL_TIME, reusa `lancar_resultado`, idempotente, loga ignorados; `tests/test_sync_resultados.py` (pontos recalculados, idempotência, home/away invertido, encerrado sem placar) → @backend — 2026-06-19
+
+### 10e — Integração no login (background + throttle + erro isolado)
+- [x] ✅ `disparar_sync_se_necessario(SessionLocal, agora)` (sessão própria, grava `ultima_execucao` antes da chamada, try/except amplo) + `config` (`espn_sync_intervalo_min`=15, `espn_timeout_s`=5) + `BackgroundTasks` no `POST /login` + `tests/test_login_sync.py` (login OK com ESPN caída, throttle dentro/fora da janela inclusive `ultima_execucao` naive) → @backend — 2026-06-19
+
+### 10f — Validação das abreviações contra a ESPN
+- [x] ✅ Validado ao vivo (datas 11–27/06): as 48 abreviações da ESPN batem com o de-para, 0 divergência. Fuso confirmado: `date(data_hora)` casa com `dates=` da ESPN (janela D-1/D/D+1 por robustez) → @backend — 2026-06-19
+
+### Deploy da Fase 10
+- [x] ✅ Migração `7b24c90f7905` aplicada na Neon + seed do de-para (48) na Neon — 2026-06-19
+- [ ] Push do código (dispara deploy no Render) — o sync passa a rodar no login em produção
+- [ ] (Opcional, decidir) backfill imediato: rodar o sync uma vez na Neon, ou deixar o 1º login preencher
+
+### 10g — UI (opcional, fora do MVP)
+- [ ] (Opcional) Indicador "última atualização de resultados" no dashboard, lendo `sync_state.ultima_execucao` → @frontend
 
 ---
 
 ## Backlog / Fase 2 (futuro)
 
-- [ ] Importação automática de resultados via API de futebol (ex.: https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=20260617, https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=760436)
 - [ ] Notificação de "falta palpitar" antes do fechamento da rodada
 - [ ] Histórico de copas anteriores (aba `TODAS AS COPAS`)

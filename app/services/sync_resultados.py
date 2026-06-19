@@ -1,0 +1,292 @@
+"""Service de sincronização de resultados via ESPN.
+
+Fluxo:
+  1. `disparar_sync_se_necessario(db_factory, agora)`:
+       - Chamado como BackgroundTask após login bem-sucedido.
+       - Lê/cria a linha `SyncState(chave="espn_resultados")`.
+       - Verifica throttle: se `ultima_execucao` < `ESPN_SYNC_INTERVALO_MIN` minutos atrás,
+         aborta silenciosamente.
+       - Grava `ultima_execucao = agora` ANTES de chamar a ESPN (evita corrida em
+         logins simultâneos no Render free).
+       - Abre uma sessão própria (`SessionLocal()`) — a sessão do `Depends(get_db)`
+         já estará fechada quando a BackgroundTask rodar.
+       - Envolve TUDO em try/except — nunca propaga exceção para o login.
+
+  2. `sincronizar_resultados(db, agora)`:
+       - Seleciona `Jogo` com `data_hora <= agora` e `status != encerrado`.
+       - Agrupa por data (do campo `data_hora`).
+       - Para cada data pendente chama `buscar_scoreboard_com_janela` (D-1, D, D+1).
+       - Para cada evento encerrado: resolve abrev→nome PT (TeamAlias) → Jogo por
+         (time_casa, time_visitante, date) → chama `lancar_resultado`.
+       - Abreviação sem de-para ou evento sem Jogo: incrementa contador e loga WARNING.
+       - Retorna `ResumoSync` com os contadores.
+
+Decisão de fuso (2026-06-19):
+    O banco armazena horários da planilha (BRT/UTC-3) com label UTC. A ESPN agrupa
+    pelo mesmo calendário local, então `date(Jogo.data_hora)` casa diretamente com
+    o parâmetro `dates=` da ESPN. O uso de janela D-1/D/D+1 em
+    `buscar_scoreboard_com_janela` oferece robustez adicional.
+"""
+
+from __future__ import annotations
+
+import logging
+from collections import defaultdict
+from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
+from typing import Callable
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.models import Jogo
+from app.models.sync_state import SyncState
+from app.models.team_alias import TeamAlias
+from app.services.admin import lancar_resultado
+from app.services.dashboard import STATUS_ENCERRADO
+from app.services.espn import EspnClientError, buscar_scoreboard_com_janela
+
+logger = logging.getLogger(__name__)
+
+CHAVE_SYNC = "espn_resultados"
+
+
+@dataclass(slots=True)
+class ResumoSync:
+    """Resumo do que foi feito em uma execução de sincronização."""
+
+    lancados: int = 0
+    ignorados_sem_depara: int = 0
+    ignorados_sem_jogo: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Sincronização principal
+# ---------------------------------------------------------------------------
+
+
+def sincronizar_resultados(
+    db: Session,
+    agora: datetime,
+) -> ResumoSync:
+    """Busca resultados na ESPN e lança os que ainda não estão encerrados no banco.
+
+    Idempotente: jogos já encerrados são ignorados.
+    """
+    resumo = ResumoSync()
+
+    # 1. Seleciona jogos pendentes (antes de agora, não encerrados)
+    stmt = select(
+        Jogo.id,
+        Jogo.data_hora,
+        Jogo.time_casa,
+        Jogo.time_visitante,
+        Jogo.status,
+    ).where(
+        Jogo.data_hora <= agora,
+        Jogo.status != STATUS_ENCERRADO,
+    )
+    jogos_pendentes = db.execute(stmt).all()
+
+    if not jogos_pendentes:
+        return resumo
+
+    # 2. Carrega o de-para de abreviação → nome PT-BR em memória
+    depara_stmt = select(TeamAlias.abreviacao, TeamAlias.nome)
+    depara_rows = db.execute(depara_stmt).all()
+    depara: dict[str, str] = {r.abreviacao: r.nome for r in depara_rows}
+
+    # 3. Agrupa jogos pendentes por data (campo data_hora, usando só a parte date)
+    jogos_por_data: dict[date, list] = defaultdict(list)
+    for jogo in jogos_pendentes:
+        d = jogo.data_hora.date() if hasattr(jogo.data_hora, "date") else jogo.data_hora
+        jogos_por_data[d].append(jogo)
+
+    # 4. Para cada data, busca a ESPN UMA única vez e materializa os eventos.
+    #    A estrutura é reutilizada tanto para lançar resultados quanto para
+    #    contar ignorados_sem_jogo — eliminando a segunda rodada de fetch.
+    eventos_por_data: dict[date, list] = {}
+    for data_alvo in jogos_por_data:
+        try:
+            eventos_por_data[data_alvo] = buscar_scoreboard_com_janela(data_alvo)
+        except EspnClientError as exc:
+            logger.warning("ESPN indisponível para %s: %s", data_alvo, exc)
+            eventos_por_data[data_alvo] = []
+        except Exception:
+            logger.warning(
+                "Erro inesperado ao buscar ESPN para %s", data_alvo, exc_info=True
+            )
+            eventos_por_data[data_alvo] = []
+
+    # 5. Para cada data, monta o índice de encerrados e cruza com jogos pendentes.
+    #    Cada data é buscada exatamente uma vez (ver passo 4 acima).
+    for data_alvo, jogos_do_dia in jogos_por_data.items():
+        eventos = eventos_por_data[data_alvo]
+
+        # Monta índice de eventos encerrados por (nome_casa, nome_visitante)
+        eventos_encerrados: dict[tuple[str, str], tuple[int, int]] = {}
+        for ev in eventos:
+            if not ev.encerrado:
+                continue
+
+            nome_casa = depara.get(ev.abrev_casa)
+            nome_visitante = depara.get(ev.abrev_visitante)
+
+            if nome_casa is None:
+                logger.warning(
+                    "Abreviação ESPN '%s' sem de-para; ignorando evento.", ev.abrev_casa
+                )
+                resumo.ignorados_sem_depara += 1
+                continue
+            if nome_visitante is None:
+                logger.warning(
+                    "Abreviação ESPN '%s' sem de-para; ignorando evento.",
+                    ev.abrev_visitante,
+                )
+                resumo.ignorados_sem_depara += 1
+                continue
+
+            if ev.gols_casa is None or ev.gols_visitante is None:
+                logger.warning(
+                    "Evento %s vs %s encerrado mas sem placar; ignorando.",
+                    ev.abrev_casa,
+                    ev.abrev_visitante,
+                )
+                continue
+
+            eventos_encerrados[(nome_casa, nome_visitante)] = (
+                ev.gols_casa,
+                ev.gols_visitante,
+            )
+
+        # Cruza com os jogos pendentes do dia
+        for jogo in jogos_do_dia:
+            chave = (jogo.time_casa, jogo.time_visitante)
+            if chave not in eventos_encerrados:
+                # Evento não encontrado na ESPN (pode estar em outra data da janela
+                # ou simplesmente não encerrado ainda)
+                continue
+
+            gols_c, gols_v = eventos_encerrados[chave]
+
+            # Verifica novamente no banco se ainda não foi encerrado (idempotência)
+            jogo_atual = db.get(Jogo, jogo.id)
+            if jogo_atual is None or jogo_atual.status == STATUS_ENCERRADO:
+                continue
+
+            try:
+                lancar_resultado(db, jogo.id, gols_c, gols_v)
+                resumo.lancados += 1
+                logger.info(
+                    "Resultado lançado: %s %d×%d %s (jogo_id=%d)",
+                    jogo.time_casa,
+                    gols_c,
+                    gols_v,
+                    jogo.time_visitante,
+                    jogo.id,
+                )
+            except Exception:
+                logger.warning(
+                    "Falha ao lançar resultado jogo_id=%d", jogo.id, exc_info=True
+                )
+
+    # 6. Conta ignorados_sem_jogo reutilizando os eventos já materializados.
+    #    Constrói o conjunto completo de pares pendentes para O(1) lookup.
+    pares_pendentes: set[tuple[str, str]] = {
+        (j.time_casa, j.time_visitante)
+        for jgs in jogos_por_data.values()
+        for j in jgs
+    }
+    for data_alvo, eventos in eventos_por_data.items():
+        for ev in eventos:
+            if not ev.encerrado:
+                continue
+
+            nome_casa = depara.get(ev.abrev_casa)
+            nome_visitante = depara.get(ev.abrev_visitante)
+            if nome_casa is None or nome_visitante is None:
+                continue  # já contado em ignorados_sem_depara
+
+            if (nome_casa, nome_visitante) not in pares_pendentes:
+                logger.warning(
+                    "Evento ESPN %s vs %s encerrado mas não há Jogo pendente correspondente.",
+                    nome_casa,
+                    nome_visitante,
+                )
+                resumo.ignorados_sem_jogo += 1
+
+    return resumo
+
+
+# ---------------------------------------------------------------------------
+# Throttle + disparo via BackgroundTask
+# ---------------------------------------------------------------------------
+
+
+def _get_or_create_sync_state(db: Session, chave: str) -> SyncState:
+    """Retorna a linha de SyncState, criando-a se não existir."""
+    estado = db.scalar(select(SyncState).where(SyncState.chave == chave))
+    if estado is None:
+        estado = SyncState(chave=chave, ultima_execucao=None)
+        db.add(estado)
+        db.commit()
+        db.refresh(estado)
+    return estado
+
+
+def disparar_sync_se_necessario(
+    db_factory: Callable[[], Session],
+    agora: datetime,
+) -> None:
+    """Ponto de entrada para a BackgroundTask do login.
+
+    - Abre sessão própria (a sessão do request já está fechada quando esta função
+      roda como BackgroundTask).
+    - Verifica throttle via `SyncState` persistido no banco.
+    - Grava `ultima_execucao = agora` ANTES de chamar a ESPN para evitar corrida
+      em logins simultâneos.
+    - Envolve TUDO em try/except amplo — nunca propaga exceção; o login não pode
+      quebrar por causa de falha na ESPN.
+    """
+    db = db_factory()
+    try:
+        settings = get_settings()
+        intervalo_min = settings.espn_sync_intervalo_min
+
+        estado = _get_or_create_sync_state(db, CHAVE_SYNC)
+
+        # Throttle: respeita a janela mínima
+        if estado.ultima_execucao is not None:
+            ultima = estado.ultima_execucao
+            # Normaliza para UTC se tiver tzinfo
+            if ultima.tzinfo is None:
+                ultima = ultima.replace(tzinfo=timezone.utc)
+            agora_utc = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
+            diferenca = agora_utc - ultima
+            if diferenca < timedelta(minutes=intervalo_min):
+                logger.debug(
+                    "Sync ESPN throttled: última execução há %.1f min (intervalo=%d min).",
+                    diferenca.total_seconds() / 60,
+                    intervalo_min,
+                )
+                return
+
+        # Grava timestamp ANTES de chamar a ESPN (evita corrida)
+        agora_utc = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
+        estado.ultima_execucao = agora_utc
+        db.commit()
+
+        logger.info("Iniciando sincronização de resultados ESPN.")
+        resumo = sincronizar_resultados(db, agora_utc)
+        logger.info(
+            "Sync ESPN concluído: %d lançados, %d sem de-para, %d sem jogo.",
+            resumo.lancados,
+            resumo.ignorados_sem_depara,
+            resumo.ignorados_sem_jogo,
+        )
+
+    except Exception:
+        logger.exception("Erro inesperado no sync ESPN; ignorando para não afetar o login.")
+    finally:
+        db.close()

@@ -52,8 +52,14 @@ O free tier não tem shell, então rode os scripts **da sua máquina apontando p
 python -m alembic upgrade head          # (se ainda não rodou no deploy)
 python scripts/criar_admin.py           # cria admin/admin123 NO banco da Neon
 python scripts/importar_planilha.py     # carrega jogadores/rodadas/jogos/palpites
+python scripts/seed_team_alias.py       # popula o de-para de times (48) p/ o sync da ESPN
 ```
 (O app normaliza o `DATABASE_URL`, então a string crua da Neon funciona nos scripts também.)
+
+> **Resultados automáticos (ESPN):** a partir da Fase 10, ao logar o app busca em background
+> os resultados que faltam (sem bloquear o login). Exige o `team_alias` semeado (`seed_team_alias.py`).
+> Opcional: ajustar `ESPN_SYNC_INTERVALO_MIN` (throttle, default 15) e `ESPN_TIMEOUT_S` (default 5).
+> Se um dia recriar o banco do zero, rode o `seed_team_alias.py` de novo.
 
 ### A5. Finalizar
 - Acesse a URL do Render (`https://copa-phibra.onrender.com` ou similar), entre com `admin`/`admin123`.
