@@ -168,6 +168,9 @@ QA auditou (caminho crítico do login): veredito PRONTA, 2 importantes corrigido
 ### 10g — UI (opcional, fora do MVP)
 - [ ] (Opcional) Indicador "última atualização de resultados" no dashboard, lendo `sync_state.ultima_execucao` → @frontend
 
+### Ajuste (2026-06-19): gatilho do sync movido para o dashboard
+- [x] ✅ O sync ESPN passa a ser disparado ao carregar o dashboard (`GET /`), não mais no `POST /login` — cobre quem mantém a sessão aberta e só recarrega a home. Mesmo padrão (BackgroundTask + `SessionLocal` + throttle persistido); só para usuário autenticado. `BackgroundTasks` removido de `routers/auth.py`; `routers/dashboard.py` ganha o disparo. Testes movidos `test_login_sync.py` → `test_dashboard_sync.py` (dispara/falha-isolada/anônimo-não-dispara/sessão-própria/login-não-dispara-mais + throttle). **183 testes** → @backend — 2026-06-19
+
 ---
 
 ## Fase 11 — Lista de jogos + escudos (concluída — 2026-06-19)
@@ -194,6 +197,20 @@ a lista só carrega os pontos do próprio usuário. **177 testes passando.**
 
 ### Deploy da Fase 11
 - [ ] Push do código (junto com a Fase 10) → dispara deploy no Render. Migração `a1b2c3d4e5f6` e seed já aplicados na Neon.
+
+---
+
+## Fase 12 — Troca de senha pelo próprio usuário (concluída — 2026-06-19)
+
+Autoatendimento: qualquer usuário logado troca a própria senha (até hoje só o admin
+resetava via `/admin/usuarios`). Lógica em `services/auth.py`; senha sempre com hash.
+**183 testes passando.**
+
+- [x] ✅ `services/auth.py` — `alterar_senha(db, usuario, senha_atual, nova_senha, confirmacao)`: valida senha atual, tamanho mínimo (`SENHA_MIN_LENGTH=6`), confirmação e que a nova ≠ atual; `ValueError` (pt-BR) em falha; re-hash via `hash_senha` num commit → @backend — 2026-06-19
+- [x] ✅ `routers/auth.py` — `GET /trocar-senha` (form, anônimo→/login) e `POST /trocar-senha` (re-renderiza com banner de erro 400 ou sucesso); helper `_templates()` → @backend — 2026-06-19
+- [x] ✅ `tests/test_auth.py` — sucesso (novo hash bate, antigo não); senha atual incorreta; confirmação diferente; nova curta; nova igual à atual; exige login (GET+POST) — 6 testes → @backend — 2026-06-19
+- [x] ✅ `templates/trocar_senha.html` (reusa estilos `auth-*`) + link "Trocar senha" no `base.html` + estilos `.auth-message` (erro/ok) no `app.css` → @frontend — 2026-06-19
+- [ ] Push do código → dispara deploy no Render
 
 ---
 

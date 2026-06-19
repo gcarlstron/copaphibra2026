@@ -1,20 +1,22 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
-from fastapi import APIRouter, BackgroundTasks, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import SessionLocal, get_db
+from app.database import get_db
 from app.models import Usuario
-from app.services.auth import verificar_senha
-from app.services.sync_resultados import disparar_sync_se_necessario
+from app.services.auth import alterar_senha, verificar_senha
 
 router = APIRouter()
+
+
+def _templates() -> Jinja2Templates:
+    settings = get_settings()
+    return Jinja2Templates(directory=str(settings.templates_dir))
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Usuario | None:
@@ -34,14 +36,12 @@ def get_current_admin(current_user: Usuario | None = Depends(get_current_user)) 
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request) -> HTMLResponse:
     settings = get_settings()
-    templates = Jinja2Templates(directory=str(settings.templates_dir))
-    return templates.TemplateResponse(request, "login.html", {"app_name": settings.app_name})
+    return _templates().TemplateResponse(request, "login.html", {"app_name": settings.app_name})
 
 
 @router.post("/login")
 def login(
     request: Request,
-    background_tasks: BackgroundTasks,
     username: str = Form(...),
     senha: str = Form(...),
     db: Session = Depends(get_db),
@@ -54,20 +54,72 @@ def login(
 
     request.session["user_id"] = usuario.id
 
-    # Dispara sync de resultados ESPN em background — não bloqueia a resposta.
-    # A sessão do Depends(get_db) estará fechada quando a task rodar;
-    # por isso a task abre sua própria sessão via SessionLocal.
-    background_tasks.add_task(
-        disparar_sync_se_necessario,
-        SessionLocal,
-        datetime.now(timezone.utc),
-    )
-
-    response = RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
-    return response
+    # O sync de resultados ESPN é disparado ao carregar o dashboard (GET /),
+    # não mais no login — ver app/routers/dashboard.py.
+    return RedirectResponse(url="/", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/logout")
 def logout(request: Request) -> RedirectResponse:
     request.session.clear()
     return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/trocar-senha", response_class=HTMLResponse)
+def trocar_senha_form(
+    request: Request,
+    current_user: Usuario | None = Depends(get_current_user),
+) -> Response:
+    if current_user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    settings = get_settings()
+    return _templates().TemplateResponse(
+        request,
+        "trocar_senha.html",
+        {
+            "app_name": settings.app_name,
+            "user_id": current_user.id,
+            "is_admin": current_user.is_admin,
+        },
+    )
+
+
+@router.post("/trocar-senha", response_class=HTMLResponse)
+def trocar_senha(
+    request: Request,
+    senha_atual: str = Form(...),
+    nova_senha: str = Form(...),
+    confirmacao: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: Usuario | None = Depends(get_current_user),
+) -> Response:
+    if current_user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    settings = get_settings()
+    contexto: dict[str, object] = {
+        "app_name": settings.app_name,
+        "user_id": current_user.id,
+        "is_admin": current_user.is_admin,
+    }
+
+    try:
+        alterar_senha(
+            db=db,
+            usuario=current_user,
+            senha_atual=senha_atual,
+            nova_senha=nova_senha,
+            confirmacao=confirmacao,
+        )
+    except ValueError as exc:
+        contexto["erro"] = str(exc)
+        return _templates().TemplateResponse(
+            request,
+            "trocar_senha.html",
+            contexto,
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    contexto["sucesso"] = True
+    return _templates().TemplateResponse(request, "trocar_senha.html", contexto)
