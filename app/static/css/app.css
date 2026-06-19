@@ -1320,3 +1320,134 @@ body::before {
         height: 36px;
     }
 }
+
+/* ============================================================
+   Jogos — cards por rodada (página "Todos os jogos")
+   Estilo isolado: só afeta .jogo-card* e .jogos-lista-grid-cards
+   ============================================================ */
+
+.jogos-lista-grid-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+}
+
+.jogo-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(22, 32, 43, 0.08);
+    text-decoration: none;
+    color: var(--text);
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+
+.jogo-card:hover {
+    background: var(--accent-soft);
+    border-color: rgba(212, 93, 40, 0.25);
+    transform: translateY(-1px);
+}
+
+/* Cabeçalho: data + status (pill compacta — "Encerrado" menor) */
+.jogo-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.jogo-card-date {
+    font-size: 0.76rem;
+    color: var(--muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.jogo-card .status-pill {
+    padding: 4px 10px;
+    font-size: 0.7rem;
+    cursor: default;
+}
+
+/* Confronto: [escudo+casa] [placar] [escudo+visitante] */
+.jogo-card-match {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+}
+
+.jogo-card-team {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.jogo-card-crest {
+    width: 28px;
+    height: 28px;
+    object-fit: contain;
+    border-radius: 3px;
+}
+
+.jogo-card-team-name {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+    line-height: 1.2;
+}
+
+/* Placar em linha: 2 x 0 */
+.jogo-card-score {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 12px;
+    background: rgba(212, 93, 40, 0.07);
+    white-space: nowrap;
+}
+
+.jogo-card-score-num {
+    font-size: 1.6rem;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+}
+
+.jogo-card-score-sep {
+    font-size: 0.9rem;
+    font-weight: 400;
+    color: var(--muted);
+}
+
+.jogo-card-score-tbd {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-style: italic;
+}
+
+/* Rodapé: pontuação do usuário, centralizada embaixo */
+.jogo-card-footer {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-top: 12px;
+    border-top: 1px solid rgba(22, 32, 43, 0.08);
+}
+
+.jogo-card-no-result,
+.jogo-card-waiting {
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-style: italic;
+}

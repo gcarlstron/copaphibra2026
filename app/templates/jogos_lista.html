@@ -8,6 +8,7 @@
         <div>
             <p class="eyebrow">Copa do Mundo 2026</p>
             <h2>Todos os jogos</h2>
+            <p class="muted">Jogos passados e futuros organizados por rodada, com status, placar e seus pontos em destaque.</p>
         </div>
     </div>
 
@@ -30,72 +31,67 @@
         </header>
 
         {% if grupo.jogos %}
-        <div class="jogos-lista-grid">
+        <div class="jogos-lista-grid-cards">
             {% for j in grupo.jogos %}
-            <a href="/jogos/{{ j.id }}" class="jogo-lista-row">
-
-                {# Data / hora #}
-                <span class="jogo-lista-date">{{ j.data_hora.strftime('%d/%m %H:%M') }}</span>
-
-                {# Time da casa: escudo + nome #}
-                <span class="jogo-lista-team jogo-lista-team--casa">
-                    {% if j.escudo_casa %}
-                    <img
-                        class="team-crest"
-                        src="{{ j.escudo_casa }}"
-                        alt="{{ j.time_casa }}"
-                        width="24" height="24"
-                        loading="lazy"
-                        onerror="this.style.display='none'">
-                    {% endif %}
-                    <span class="team-name">{{ j.time_casa }}</span>
-                </span>
-
-                {# Placar ou separador #}
-                <span class="jogo-lista-score">
-                    {% if j.gols_casa is not none and j.gols_visitante is not none %}
-                    <span class="jogo-lista-score-num">{{ j.gols_casa }}</span>
-                    <span class="result-vs">x</span>
-                    <span class="jogo-lista-score-num">{{ j.gols_visitante }}</span>
+            <a href="/jogos/{{ j.id }}" class="jogo-card">
+                <div class="jogo-card-header">
+                    <span class="jogo-card-date">{{ j.data_hora.strftime('%d/%m %H:%M') }}</span>
+                    {% if j.status == 'encerrado' %}
+                    <span class="status-pill status-pill--encerrado">Encerrado</span>
                     {% else %}
-                    <span class="jogo-lista-score-tbd">–</span>
+                    <span class="status-pill status-pill--agendado">Agendado</span>
                     {% endif %}
-                </span>
+                </div>
 
-                {# Time visitante: nome + escudo #}
-                <span class="jogo-lista-team jogo-lista-team--visitante">
-                    <span class="team-name">{{ j.time_visitante }}</span>
-                    {% if j.escudo_visitante %}
-                    <img
-                        class="team-crest"
-                        src="{{ j.escudo_visitante }}"
-                        alt="{{ j.time_visitante }}"
-                        width="24" height="24"
-                        loading="lazy"
-                        onerror="this.style.display='none'">
-                    {% endif %}
-                </span>
+                <div class="jogo-card-match">
+                    <div class="jogo-card-team jogo-card-team--casa">
+                        {% if j.escudo_casa %}
+                        <img
+                            class="jogo-card-crest"
+                            src="{{ j.escudo_casa }}"
+                            alt="{{ j.time_casa }}"
+                            width="28" height="28"
+                            loading="lazy"
+                            onerror="this.style.display='none'">
+                        {% endif %}
+                        <span class="jogo-card-team-name">{{ j.time_casa }}</span>
+                    </div>
 
-                {# Status #}
-                {% if j.status == 'encerrado' %}
-                <span class="status-pill status-pill--encerrado">Encerrado</span>
-                {% else %}
-                <span class="status-pill status-pill--agendado">Agendado</span>
-                {% endif %}
+                    <div class="jogo-card-score">
+                        {% if j.gols_casa is not none and j.gols_visitante is not none %}
+                        <span class="jogo-card-score-num">{{ j.gols_casa }}</span>
+                        <span class="jogo-card-score-sep">x</span>
+                        <span class="jogo-card-score-num">{{ j.gols_visitante }}</span>
+                        {% else %}
+                        <span class="jogo-card-score-tbd">a definir</span>
+                        {% endif %}
+                    </div>
 
-                {# Meus pontos #}
-                <span class="jogo-lista-pts">
+                    <div class="jogo-card-team jogo-card-team--visitante">
+                        <span class="jogo-card-team-name">{{ j.time_visitante }}</span>
+                        {% if j.escudo_visitante %}
+                        <img
+                            class="jogo-card-crest"
+                            src="{{ j.escudo_visitante }}"
+                            alt="{{ j.time_visitante }}"
+                            width="28" height="28"
+                            loading="lazy"
+                            onerror="this.style.display='none'">
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="jogo-card-footer">
                     {% if j.status == 'encerrado' %}
                         {% if j.meus_pontos is not none %}
                         <span class="pts-badge pts-badge--{{ j.meus_pontos }}">{{ j.meus_pontos }}</span>
                         {% else %}
-                        <span class="jogo-lista-pts-none" title="Sem palpite registrado">—</span>
+                        <span class="jogo-card-no-result">Sem palpite</span>
                         {% endif %}
                     {% else %}
-                        {# Jogo agendado: nunca mostrar 0 — aguardando resultado #}
-                        <span class="jogo-lista-pts-wait">aguardando</span>
+                        <span class="jogo-card-waiting">Aguardando</span>
                     {% endif %}
-                </span>
+                </div>
 
             </a>
             {% endfor %}

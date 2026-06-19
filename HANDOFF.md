@@ -16,10 +16,18 @@ Este documento resume o estado atual do projeto para retomada por outra IA ou po
 - Fase 10 concluída (implementação): busca automática de resultados via ESPN, disparada no login (background, throttle persistido em `sync_state`, isolamento total de erro). De-para por abreviação FIFA (`team_alias`, 48 times). Reusa `admin.lancar_resultado`. Cliente `httpx2`. QA auditou o caminho do login (PRONTA).
 - Fase 11 concluída: página `GET /jogos` (todos os jogos agrupados por rodada, com os pontos do PRÓPRIO usuário ao lado) + escudos dos times (ESPN) no detalhe e na lista (`team_alias.escudo_url`, derivado do padrão `.../countries/500/{abrev}.png`). Link "Jogos" no menu. Suíte em **177 testes**. Migrações (`7b24c90f7905`, `a1b2c3d4e5f6`) + seeds já aplicados na Neon.
 
-## Próxima Etapa
+## Estado atual (2026-06-19) — NO AR
 
-- **Push do código** (`git push`) → dispara o deploy no Render, servindo as Fases 10 + 11 (hoje produção ainda roda o código pré-Fase-10). As migrações e seeds JÁ estão na Neon, então o `alembic upgrade head` do deploy será no-op. Commits locais pendentes de push: Fase 10 (`0a084dd`) e Fase 11.
-- (Opcional) Backfill imediato dos resultados na Neon: rodar o sync uma vez, ou deixar o 1º login preencher.
+- **Deploy feito:** Fases 10 + 11 pushadas (commits `0a084dd`, `b3cd79e`) → Render deployou. Migrações (`7b24c90f7905`, `a1b2c3d4e5f6`) + seeds (`team_alias` com escudos, `sync_state`) aplicados na Neon.
+- **Sync de resultados funcionando em produção:** o disparo no login já preencheu na Neon os jogos de 17–18/06 com o placar correto da ESPN (Gana 1×0 Panamá, México 1×0 Coréia do Sul, Canadá 6×0 Catar, etc.). 28 jogos encerrados, 0 pendentes no passado — dados atualizados. Líder atual: Marcio (79 pts).
+- Suíte: **177 testes**. Repo: `gcarlstron/copaphibra2026` (branch `main`).
+
+## Próxima Etapa / follow-ups em aberto
+
+- **Conta `admin` aparece na classificação** (com 0 pts) — `montar_dashboard` inclui todos os usuários ativos. Decidir: excluir contas `is_admin` do ranking (provável) — ajuste pequeno em `services/dashboard.py`.
+- **Segurança (pendente desde o deploy inicial):** trocar a senha do `admin` (`admin123`) via Admin → Usuários; rotacionar a senha do banco na Neon (foi compartilhada em texto na conversa) e atualizar `DATABASE_URL` no Render.
+- (Opcional) escudos pequenos nas listas do dashboard (exigiria expor `escudo_url` em `JogoResumoView`).
+- **Nota:** há edição de `HANDOFF.md` (e possivelmente `TASKS.md`) não commitada ao fim desta sessão — commitar/pushar na retomada.
 - Pós-deploy ainda pendente: trocar senha do `admin` (`admin123`); rotacionar a senha do banco na Neon (foi compartilhada em texto).
 - Possível próximo: indicador "última atualização" no dashboard (Fase 10g, opcional); limpar follow-ups técnicos abaixo.
 
