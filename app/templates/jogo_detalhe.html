@@ -14,7 +14,18 @@
         <p class="match-detail-date">{{ dados.jogo.data_hora.strftime('%d/%m/%Y %H:%M') }} UTC</p>
 
         <div class="match-detail-scoreboard">
-            <span class="match-detail-team">{{ dados.jogo.time_casa }}</span>
+            <span class="match-detail-team">
+                {% if dados.jogo.escudo_casa %}
+                <img
+                    class="match-detail-crest"
+                    src="{{ dados.jogo.escudo_casa }}"
+                    alt="{{ dados.jogo.time_casa }}"
+                    width="48" height="48"
+                    loading="lazy"
+                    onerror="this.style.display='none'">
+                {% endif %}
+                {{ dados.jogo.time_casa }}
+            </span>
 
             <div class="match-detail-score">
                 {% if dados.jogo.gols_casa is not none and dados.jogo.gols_visitante is not none %}
@@ -26,7 +37,18 @@
                 {% endif %}
             </div>
 
-            <span class="match-detail-team match-detail-team--right">{{ dados.jogo.time_visitante }}</span>
+            <span class="match-detail-team match-detail-team--right">
+                {{ dados.jogo.time_visitante }}
+                {% if dados.jogo.escudo_visitante %}
+                <img
+                    class="match-detail-crest"
+                    src="{{ dados.jogo.escudo_visitante }}"
+                    alt="{{ dados.jogo.time_visitante }}"
+                    width="48" height="48"
+                    loading="lazy"
+                    onerror="this.style.display='none'">
+                {% endif %}
+            </span>
         </div>
 
         <div class="match-detail-status">

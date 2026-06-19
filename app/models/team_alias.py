@@ -22,3 +22,4 @@ class TeamAlias(Base):
     )
     nome: Mapped[str] = mapped_column(String(120), nullable=False)
     nome_en: Mapped[str] = mapped_column(String(120), nullable=False)
+    escudo_url: Mapped[str | None] = mapped_column(String(255), nullable=True)

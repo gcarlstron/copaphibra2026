@@ -135,16 +135,27 @@ def main() -> None:
         criados = 0
         existentes = 0
         for nome_exato, abrev, nome_en in pares:
+            escudo_url = (
+                f"https://a.espncdn.com/i/teamlogos/countries/500/{abrev.lower()}.png"
+            )
             existente = db.scalar(
                 select(TeamAlias).where(TeamAlias.abreviacao == abrev)
             )
             if existente is None:
-                db.add(TeamAlias(abreviacao=abrev, nome=nome_exato, nome_en=nome_en))
+                db.add(
+                    TeamAlias(
+                        abreviacao=abrev,
+                        nome=nome_exato,
+                        nome_en=nome_en,
+                        escudo_url=escudo_url,
+                    )
+                )
                 criados += 1
             else:
-                # Atualiza nome caso a grafia tenha mudado
+                # Atualiza nome e escudo_url caso a grafia ou URL tenha mudado
                 existente.nome = nome_exato
                 existente.nome_en = nome_en
+                existente.escudo_url = escudo_url
                 existentes += 1
 
         db.commit()

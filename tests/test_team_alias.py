@@ -168,3 +168,74 @@ class TestTeamAlias:
         with pytest.raises(IntegrityError):
             db_session.commit()
         db_session.rollback()
+
+    # ------------------------------------------------------------------
+    # Fase 11a — escudo_url
+    # ------------------------------------------------------------------
+
+    def test_escudo_url_nullable(self, db_session: Session) -> None:
+        """Coluna escudo_url é nullable: inserir sem ela não quebra."""
+        db_session.add(TeamAlias(abreviacao="TST", nome="Teste", nome_en="Test"))
+        db_session.commit()
+
+        result = db_session.scalar(
+            select(TeamAlias).where(TeamAlias.abreviacao == "TST")
+        )
+        assert result is not None
+        assert result.escudo_url is None
+
+    def test_escudo_url_mex_padrao_espn(self, db_session: Session) -> None:
+        """MEX deve derivar a URL do padrão ESPN: .../mex.png."""
+        db_session.add(
+            TeamAlias(
+                abreviacao="MEX",
+                nome="México",
+                nome_en="Mexico",
+                escudo_url="https://a.espncdn.com/i/teamlogos/countries/500/mex.png",
+            )
+        )
+        db_session.commit()
+
+        result = db_session.scalar(
+            select(TeamAlias).where(TeamAlias.abreviacao == "MEX")
+        )
+        assert result is not None
+        assert result.escudo_url == "https://a.espncdn.com/i/teamlogos/countries/500/mex.png"
+
+    def test_escudo_url_rsa_padrao_espn(self, db_session: Session) -> None:
+        """RSA deve derivar a URL do padrão ESPN: .../rsa.png."""
+        db_session.add(
+            TeamAlias(
+                abreviacao="RSA",
+                nome="África do Sul",
+                nome_en="South Africa",
+                escudo_url="https://a.espncdn.com/i/teamlogos/countries/500/rsa.png",
+            )
+        )
+        db_session.commit()
+
+        result = db_session.scalar(
+            select(TeamAlias).where(TeamAlias.abreviacao == "RSA")
+        )
+        assert result is not None
+        assert result.escudo_url == "https://a.espncdn.com/i/teamlogos/countries/500/rsa.png"
+
+    def test_seed_idempotente_atualiza_escudo_url(self, db_session: Session) -> None:
+        """Seed idempotente deve atualizar escudo_url em registro já existente."""
+        # Insere sem escudo_url
+        alias = TeamAlias(abreviacao="BRA", nome="Brasil", nome_en="Brazil", escudo_url=None)
+        db_session.add(alias)
+        db_session.commit()
+
+        assert alias.escudo_url is None
+
+        # Simula o que o seed faz ao re-rodar
+        novo_url = "https://a.espncdn.com/i/teamlogos/countries/500/bra.png"
+        alias.escudo_url = novo_url
+        db_session.commit()
+
+        result = db_session.scalar(
+            select(TeamAlias).where(TeamAlias.abreviacao == "BRA")
+        )
+        assert result is not None
+        assert result.escudo_url == novo_url

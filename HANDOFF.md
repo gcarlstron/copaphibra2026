@@ -13,11 +13,12 @@ Este documento resume o estado atual do projeto para retomada por outra IA ou po
 - Fase 7 concluída: Admin completo — `services/admin.py` + `routers/admin.py` + telas `admin/` (rodadas, jogos, usuários). Lançamento de resultado recalcula `Palpite.pontos` de todos os palpites do jogo.
 - Fase 8 concluída: `scripts/importar_planilha.py` carregou a fase de grupos (10 jogadores, 3 rodadas, 72 jogos, 480 palpites) a partir de `import/COPA PHIBRA 2026 OFICIAL ATÉ A FINAL SEGUNDA FASE.xlsx`. QA aprovou: os 10 totais por jogador batem com a planilha.
 - Fase 9 concluída: revisão final de QA do sistema inteiro; 3 bloqueantes corrigidos (crash de timezone em `/palpites`, `SECRET_KEY` guard em produção, cookie de sessão endurecido) + importantes (gols negativos validados no backend, `bcrypt<5.0` pinado). Deploy preparado e **executado**: app no ar no Render + Neon, testado pelo operador.
-- Fase 10 concluída (implementação): busca automática de resultados via ESPN, disparada no login (background, throttle persistido em `sync_state`, isolamento total de erro). De-para por abreviação FIFA (`team_alias`, 48 times). Reusa `admin.lancar_resultado`. Cliente `httpx2`. QA auditou o caminho do login (PRONTA). Suíte em **155 testes**. Migração + seed já aplicados na Neon. **Falta o push do código** para o Render servir a feature.
+- Fase 10 concluída (implementação): busca automática de resultados via ESPN, disparada no login (background, throttle persistido em `sync_state`, isolamento total de erro). De-para por abreviação FIFA (`team_alias`, 48 times). Reusa `admin.lancar_resultado`. Cliente `httpx2`. QA auditou o caminho do login (PRONTA).
+- Fase 11 concluída: página `GET /jogos` (todos os jogos agrupados por rodada, com os pontos do PRÓPRIO usuário ao lado) + escudos dos times (ESPN) no detalhe e na lista (`team_alias.escudo_url`, derivado do padrão `.../countries/500/{abrev}.png`). Link "Jogos" no menu. Suíte em **177 testes**. Migrações (`7b24c90f7905`, `a1b2c3d4e5f6`) + seeds já aplicados na Neon.
 
 ## Próxima Etapa
 
-- **Push do código** (`git push`) → dispara o deploy no Render; a partir daí o sync roda no login em produção. (Migração `7b24c90f7905` e seed do de-para JÁ aplicados na Neon; o `alembic upgrade head` do deploy será no-op.)
+- **Push do código** (`git push`) → dispara o deploy no Render, servindo as Fases 10 + 11 (hoje produção ainda roda o código pré-Fase-10). As migrações e seeds JÁ estão na Neon, então o `alembic upgrade head` do deploy será no-op. Commits locais pendentes de push: Fase 10 (`0a084dd`) e Fase 11.
 - (Opcional) Backfill imediato dos resultados na Neon: rodar o sync uma vez, ou deixar o 1º login preencher.
 - Pós-deploy ainda pendente: trocar senha do `admin` (`admin123`); rotacionar a senha do banco na Neon (foi compartilhada em texto).
 - Possível próximo: indicador "última atualização" no dashboard (Fase 10g, opcional); limpar follow-ups técnicos abaixo.

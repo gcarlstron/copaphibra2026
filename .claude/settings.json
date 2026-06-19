@@ -8,7 +8,8 @@
       "Bash(uvicorn:*)",
       "Bash(alembic:*)",
       "Bash(ruff:*)",
-      "Bash(black:*)"
+      "Bash(black:*)",
+      "Bash(C:/Users/PHIBRA/source/repos/CopaPhibra/.venv/Scripts/python.exe -m pytest -q)"
     ]
   }
 }

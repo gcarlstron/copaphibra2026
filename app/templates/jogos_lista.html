@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+
+    {# ── Cabeçalho ─────────────────────────────────────────────────── #}
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Copa do Mundo 2026</p>
+            <h2>Todos os jogos</h2>
+        </div>
+    </div>
+
+    {# ── Estado vazio ───────────────────────────────────────────────── #}
+    {% if not dados.grupos %}
+    <article class="round-card">
+        <p class="empty-state">Nenhum jogo cadastrado ainda.</p>
+    </article>
+    {% endif %}
+
+    {# ── Um card por rodada ─────────────────────────────────────────── #}
+    {% for grupo in dados.grupos %}
+    <article class="round-card">
+
+        <header class="round-head">
+            <div>
+                <h3>{{ grupo.rodada_nome }}</h3>
+                <p class="muted">{{ grupo.jogos | length }} jogo{% if grupo.jogos | length != 1 %}s{% endif %}</p>
+            </div>
+        </header>
+
+        {% if grupo.jogos %}
+        <div class="jogos-lista-grid">
+            {% for j in grupo.jogos %}
+            <a href="/jogos/{{ j.id }}" class="jogo-lista-row">
+
+                {# Data / hora #}
+                <span class="jogo-lista-date">{{ j.data_hora.strftime('%d/%m %H:%M') }}</span>
+
+                {# Time da casa: escudo + nome #}
+                <span class="jogo-lista-team jogo-lista-team--casa">
+                    {% if j.escudo_casa %}
+                    <img
+                        class="team-crest"
+                        src="{{ j.escudo_casa }}"
+                        alt="{{ j.time_casa }}"
+                        width="24" height="24"
+                        loading="lazy"
+                        onerror="this.style.display='none'">
+                    {% endif %}
+                    <span class="team-name">{{ j.time_casa }}</span>
+                </span>
+
+                {# Placar ou separador #}
+                <span class="jogo-lista-score">
+                    {% if j.gols_casa is not none and j.gols_visitante is not none %}
+                    <span class="jogo-lista-score-num">{{ j.gols_casa }}</span>
+                    <span class="result-vs">x</span>
+                    <span class="jogo-lista-score-num">{{ j.gols_visitante }}</span>
+                    {% else %}
+                    <span class="jogo-lista-score-tbd">–</span>
+                    {% endif %}
+                </span>
+
+                {# Time visitante: nome + escudo #}
+                <span class="jogo-lista-team jogo-lista-team--visitante">
+                    <span class="team-name">{{ j.time_visitante }}</span>
+                    {% if j.escudo_visitante %}
+                    <img
+                        class="team-crest"
+                        src="{{ j.escudo_visitante }}"
+                        alt="{{ j.time_visitante }}"
+                        width="24" height="24"
+                        loading="lazy"
+                        onerror="this.style.display='none'">
+                    {% endif %}
+                </span>
+
+                {# Status #}
+                {% if j.status == 'encerrado' %}
+                <span class="status-pill status-pill--encerrado">Encerrado</span>
+                {% else %}
+                <span class="status-pill status-pill--agendado">Agendado</span>
+                {% endif %}
+
+                {# Meus pontos #}
+                <span class="jogo-lista-pts">
+                    {% if j.status == 'encerrado' %}
+                        {% if j.meus_pontos is not none %}
+                        <span class="pts-badge pts-badge--{{ j.meus_pontos }}">{{ j.meus_pontos }}</span>
+                        {% else %}
+                        <span class="jogo-lista-pts-none" title="Sem palpite registrado">—</span>
+                        {% endif %}
+                    {% else %}
+                        {# Jogo agendado: nunca mostrar 0 — aguardando resultado #}
+                        <span class="jogo-lista-pts-wait">aguardando</span>
+                    {% endif %}
+                </span>
+
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-state">Nenhum jogo nesta rodada.</p>
+        {% endif %}
+
+    </article>
+    {% endfor %}
+
+</section>
+{% endblock %}

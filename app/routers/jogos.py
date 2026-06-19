@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database import get_db
 from app.routers.auth import get_current_user
-from app.services.jogos import detalhe_do_jogo
+from app.services.jogos import detalhe_do_jogo, listar_todos_os_jogos
 
 router = APIRouter(prefix="/jogos")
 
@@ -18,6 +18,32 @@ router = APIRouter(prefix="/jogos")
 def _templates() -> Jinja2Templates:
     settings = get_settings()
     return Jinja2Templates(directory=str(settings.templates_dir))
+
+
+@router.get("", response_class=HTMLResponse)
+def jogos_lista(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> Response:
+    """Lista todos os jogos agrupados por rodada com os pontos do próprio usuário."""
+    if current_user is None:
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+
+    dados = listar_todos_os_jogos(db=db, usuario=current_user)
+
+    settings = get_settings()
+    templates = _templates()
+    return templates.TemplateResponse(
+        request,
+        "jogos_lista.html",
+        {
+            "app_name": settings.app_name,
+            "user_id": current_user.id,
+            "is_admin": current_user.is_admin,
+            "dados": dados,
+        },
+    )
 
 
 @router.get("/{jogo_id}", response_class=HTMLResponse)

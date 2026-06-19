@@ -709,12 +709,17 @@ body::before {
 }
 
 .match-detail-team {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
     font-size: clamp(1rem, 3vw, 1.4rem);
     font-weight: 700;
     text-align: right;
 }
 
 .match-detail-team--right {
+    align-items: flex-start;
     text-align: left;
 }
 
@@ -1121,5 +1126,197 @@ body::before {
     /* Admin — tabela omite coluna de data no mobile */
     .admin-table .col-datetime {
         display: none;
+    }
+}
+
+/* ============================================================
+   Jogos Lista — grid de jogos por rodada
+   ============================================================ */
+
+/*
+  Colunas:
+    [data] [time_casa] [placar] [time_visitante] [status] [pts]
+  No mobile colapsamos para duas linhas por jogo.
+*/
+.jogos-lista-grid {
+    display: grid;
+    gap: 8px;
+}
+
+.jogo-lista-row {
+    display: grid;
+    grid-template-columns: 72px 1fr auto 1fr auto auto;
+    gap: 8px 12px;
+    align-items: center;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(22, 32, 43, 0.08);
+    text-decoration: none;
+    color: var(--text);
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.jogo-lista-row:hover {
+    background: var(--accent-soft);
+    border-color: rgba(212, 93, 40, 0.25);
+}
+
+/* Data / hora */
+.jogo-lista-date {
+    font-size: 0.78rem;
+    color: var(--muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Times */
+.jogo-lista-team {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    overflow: hidden;
+}
+
+.jogo-lista-team--casa {
+    justify-content: flex-end;
+    text-align: right;
+}
+
+.jogo-lista-team--visitante {
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.team-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Escudo de time (lista e detalhe) */
+.team-crest {
+    flex-shrink: 0;
+    object-fit: contain;
+    border-radius: 3px;
+}
+
+/* Placar */
+.jogo-lista-score {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    justify-content: center;
+    min-width: 56px;
+}
+
+.jogo-lista-score-num {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--accent);
+}
+
+.jogo-lista-score-tbd {
+    color: var(--muted);
+    font-weight: 400;
+}
+
+/* Coluna de pontos */
+.jogo-lista-pts {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-width: 48px;
+}
+
+.jogo-lista-pts-none {
+    color: var(--muted);
+    font-size: 0.88rem;
+}
+
+.jogo-lista-pts-wait {
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-style: italic;
+    white-space: nowrap;
+}
+
+/* ============================================================
+   Jogo Detalhe — escudo no scoreboard
+   ============================================================ */
+
+.match-detail-crest {
+    object-fit: contain;
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+/* ============================================================
+   Responsivo — jogos lista no mobile
+   ============================================================ */
+
+@media (max-width: 640px) {
+    .jogo-lista-row {
+        /*
+          Mobile: duas linhas
+          Linha 1: [data] [casa] [placar] [visitante]
+          Linha 2: [status + pts alinhados à direita]
+        */
+        grid-template-columns: 60px 1fr auto 1fr;
+        grid-template-rows: auto auto;
+        gap: 6px 8px;
+    }
+
+    /* status e pts ficam na linha 2, agrupados */
+    .jogo-lista-row .status-pill {
+        grid-column: 3 / 4;
+        grid-row: 2;
+        justify-self: end;
+        font-size: 0.75rem;
+        padding: 4px 8px;
+    }
+
+    .jogo-lista-pts {
+        grid-column: 4 / 5;
+        grid-row: 2;
+        justify-self: start;
+    }
+
+    .jogo-lista-date {
+        grid-column: 1 / 2;
+        grid-row: 2;
+        align-self: center;
+    }
+
+    .jogo-lista-team--casa {
+        grid-column: 2 / 3;
+        grid-row: 1;
+    }
+
+    .jogo-lista-score {
+        grid-column: 3 / 4;
+        grid-row: 1;
+        min-width: 40px;
+    }
+
+    .jogo-lista-team--visitante {
+        grid-column: 4 / 5;
+        grid-row: 1;
+    }
+
+    /* escudos menores no mobile */
+    .team-crest {
+        width: 18px;
+        height: 18px;
+    }
+
+    /* escudo do detalhe menor */
+    .match-detail-crest {
+        width: 36px;
+        height: 36px;
     }
 }

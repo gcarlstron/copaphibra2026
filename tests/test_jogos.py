@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.database import Base, get_db
 from app.main import create_app
 from app.models import Jogo, Palpite, Rodada, Usuario
+from app.models.team_alias import TeamAlias
 from app.services.auth import hash_senha
 from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO
 from app.services.jogos import detalhe_do_jogo
@@ -410,3 +411,89 @@ def test_get_jogo_palpites_bloqueados_com_rodada_aberta(
     assert "Palpites liberados" in response.text
     # Bernardo não deve aparecer para Thiago enquanto rodada aberta.
     assert "Bernardo" not in response.text
+
+
+# ---------------------------------------------------------------------------
+# Testes Fase 11b — escudos no detalhe do jogo
+# ---------------------------------------------------------------------------
+
+
+def _seed_team_alias(
+    db: Session,
+    abrev: str,
+    nome: str,
+    escudo_url: str | None = None,
+) -> TeamAlias:
+    ta = TeamAlias(
+        abreviacao=abrev,
+        nome=nome,
+        nome_en=nome,
+        escudo_url=escudo_url,
+    )
+    db.add(ta)
+    db.flush()
+    return ta
+
+
+def test_detalhe_traz_escudo_quando_alias_existe(db_session: Session) -> None:
+    """detalhe_do_jogo preenche escudo_casa/visitante quando team_alias tem escudo_url."""
+    rodada = _seed_rodada(db_session, aberta=False)
+    jogo = _seed_jogo(
+        db_session,
+        rodada,
+        time_casa="Brasil",
+        time_visitante="México",
+    )
+    usuario = _seed_usuario(db_session, "Bernardo", "bernardo")
+    _seed_team_alias(
+        db_session,
+        "BRA",
+        "Brasil",
+        "https://a.espncdn.com/i/teamlogos/countries/500/bra.png",
+    )
+    _seed_team_alias(
+        db_session,
+        "MEX",
+        "México",
+        "https://a.espncdn.com/i/teamlogos/countries/500/mex.png",
+    )
+    db_session.commit()
+
+    dados = detalhe_do_jogo(db_session, jogo.id, usuario, _AGORA)
+
+    assert dados.jogo.escudo_casa == "https://a.espncdn.com/i/teamlogos/countries/500/bra.png"
+    assert dados.jogo.escudo_visitante == "https://a.espncdn.com/i/teamlogos/countries/500/mex.png"
+
+
+def test_detalhe_escudo_none_quando_alias_ausente(db_session: Session) -> None:
+    """detalhe_do_jogo retorna None para escudos quando time não tem team_alias."""
+    rodada = _seed_rodada(db_session, aberta=False)
+    jogo = _seed_jogo(
+        db_session,
+        rodada,
+        time_casa="TimeX",
+        time_visitante="TimeY",
+    )
+    usuario = _seed_usuario(db_session, "Bernardo", "bernardo")
+    db_session.commit()
+
+    # Nenhum team_alias inserido — não deve quebrar.
+    dados = detalhe_do_jogo(db_session, jogo.id, usuario, _AGORA)
+
+    assert dados.jogo.escudo_casa is None
+    assert dados.jogo.escudo_visitante is None
+
+
+def test_detalhe_escudo_none_quando_escudo_url_nao_populado(db_session: Session) -> None:
+    """detalhe_do_jogo retorna None quando team_alias existe mas escudo_url é None."""
+    rodada = _seed_rodada(db_session, aberta=False)
+    jogo = _seed_jogo(db_session, rodada, time_casa="Argentina", time_visitante="Alemanha")
+    usuario = _seed_usuario(db_session, "Bernardo", "bernardo")
+    _seed_team_alias(db_session, "ARG", "Argentina", escudo_url=None)
+    _seed_team_alias(db_session, "GER", "Alemanha", escudo_url=None)
+    db_session.commit()
+
+    dados = detalhe_do_jogo(db_session, jogo.id, usuario, _AGORA)
+
+    assert dados.jogo.escudo_casa is None
+    assert dados.jogo.escudo_visitante is None

@@ -170,6 +170,33 @@ QA auditou (caminho crítico do login): veredito PRONTA, 2 importantes corrigido
 
 ---
 
+## Fase 11 — Lista de jogos + escudos (concluída — 2026-06-19)
+
+Duas melhorias: (1) página `GET /jogos` com TODOS os jogos + os pontos do PRÓPRIO usuário
+ao lado de cada um; (2) escudos dos times (ESPN) no detalhe e na lista. Regra 4 reafirmada:
+a lista só carrega os pontos do próprio usuário. **177 testes passando.**
+
+### 11a — Escudos: migração + seed (`team_alias.escudo_url`)
+- [x] ✅ Migração `a1b2c3d4e5f6` (down_revision `7b24c90f7905`) adiciona `escudo_url` String(255) nullable; campo no model; `seed_team_alias.py` popula derivando `https://a.espncdn.com/i/teamlogos/countries/500/{abrev}.png` (idempotente); `tests/test_team_alias.py` → @backend — 2026-06-19
+- [x] ✅ Deploy: migração + re-seed aplicados na Neon (48 times com escudo_url, 0 sem) → @backend — 2026-06-19
+
+### 11b — Backend: escudos no detalhe
+- [x] ✅ `detalhe_do_jogo` ganha `escudo_casa`/`escudo_visitante` (LEFT JOIN em `team_alias`; None se ausente); `tests/test_jogos.py` (presente/ausente/null) → @backend — 2026-06-19
+
+### 11c — Backend: lista "Todos os jogos" (`GET /jogos`)
+- [x] ✅ `listar_todos_os_jogos(db, usuario)` — `JogoListaItem`/`RodadaGrupo`/`JogosListaData`, agrupado por `Rodada.ordem` (jogos por `data_hora`), com escudos e `meus_pontos` (só do próprio usuário, None se não palpitou); 2 queries (sem N+1) → @backend — 2026-06-19
+- [x] ✅ `GET /jogos` (protegida, anônimo→/login; coexiste com `/jogos/{id}`); `tests/test_jogos_lista.py` (15 testes: pontos corretos/None, ordem, escudo ausente, login, privacidade) → @backend — 2026-06-19
+
+### 11d — Frontend
+- [x] ✅ `jogos_lista.html` — todos os jogos por rodada, escudos, e pontos do usuário ao lado (badge 9/6/4/3/0; "—" sem palpite; "aguardando" sem resultado); responsivo → @frontend — 2026-06-19
+- [x] ✅ Escudos no `jogo_detalhe.html` (lazy/alt/onerror, fallback se None) + link "Jogos" no menu (`base.html`) → @frontend — 2026-06-19
+- [ ] (Opcional, não feito) escudos nas listas do dashboard — exigiria expor `escudo_url` em `JogoResumoView` (`services/dashboard.py`); pulado por ora
+
+### Deploy da Fase 11
+- [ ] Push do código (junto com a Fase 10) → dispara deploy no Render. Migração `a1b2c3d4e5f6` e seed já aplicados na Neon.
+
+---
+
 ## Backlog / Fase 2 (futuro)
 
 - [ ] Notificação de "falta palpitar" antes do fechamento da rodada
