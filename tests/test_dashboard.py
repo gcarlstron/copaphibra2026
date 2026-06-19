@@ -12,7 +12,13 @@ from app.database import Base, get_db
 from app.main import create_app
 from app.models import Jogo, Palpite, Rodada, Usuario
 from app.services.auth import hash_senha
-from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO, montar_dashboard
+from app.services.dashboard import (
+    STATUS_AGENDADO,
+    STATUS_EM_ANDAMENTO,
+    STATUS_ENCERRADO,
+    STATUS_INTERVALO,
+    montar_dashboard,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -174,6 +180,61 @@ def test_classificacao_desempate_por_qtd_9(db_session: Session) -> None:
     assert dados.classificacao[0].nome == "Bernardo"
     assert dados.classificacao[0].total == 12
     assert dados.classificacao[1].nome == "Thiago"
+
+
+# ---------------------------------------------------------------------------
+# Testes: jogos ao vivo
+# ---------------------------------------------------------------------------
+
+
+def test_jogos_ao_vivo_lista_em_andamento_e_intervalo(db_session: Session) -> None:
+    """jogos_ao_vivo deve conter jogos em andamento e no intervalo, ordenados por data."""
+    rodada = _seed_rodada(db_session, aberta=False)
+    em_andamento = _seed_jogo(
+        db_session, rodada, "EUA", "Austrália",
+        _AGORA - timedelta(minutes=30), STATUS_EM_ANDAMENTO, 1, 0,
+    )
+    intervalo = _seed_jogo(
+        db_session, rodada, "Brasil", "Itália",
+        _AGORA - timedelta(minutes=10), STATUS_INTERVALO, 0, 0,
+    )
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+
+    nomes = [(j.time_casa, j.status) for j in dados.jogos_ao_vivo]
+    assert ("EUA", STATUS_EM_ANDAMENTO) in nomes
+    assert ("Brasil", STATUS_INTERVALO) in nomes
+    assert len(dados.jogos_ao_vivo) == 2
+    # ordenado por data_hora asc (EUA -30min antes de Brasil -10min)
+    assert dados.jogos_ao_vivo[0].time_casa == "EUA"
+
+
+def test_jogos_ao_vivo_excluidos_de_recentes_e_proximos(db_session: Session) -> None:
+    """Um jogo ao vivo não pode aparecer em recentes (encerrado) nem próximos (agendado)."""
+    rodada = _seed_rodada(db_session, aberta=False)
+    _seed_jogo(
+        db_session, rodada, "EUA", "Austrália",
+        _AGORA - timedelta(minutes=30), STATUS_EM_ANDAMENTO, 1, 0,
+    )
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+
+    assert len(dados.jogos_ao_vivo) == 1
+    assert all(j.time_casa != "EUA" for j in dados.jogos_recentes)
+    assert all(j.time_casa != "EUA" for j in dados.proximos_jogos)
+
+
+def test_jogos_ao_vivo_vazio_sem_jogos(db_session: Session) -> None:
+    """Sem jogos ao vivo, a lista vem vazia."""
+    rodada = _seed_rodada(db_session, aberta=False)
+    _seed_jogo(db_session, rodada, "A", "B", _AGORA - timedelta(days=1), STATUS_ENCERRADO, 1, 0)
+    _seed_jogo(db_session, rodada, "C", "D", _AGORA + timedelta(days=1), STATUS_AGENDADO)
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+    assert dados.jogos_ao_vivo == []
 
 
 def test_classificacao_desempate_por_qtd_6_quando_9_igual(db_session: Session) -> None:

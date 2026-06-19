@@ -84,7 +84,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-> `requirements.txt` fixa `bcrypt<5.0` — necessário para o hash de senha (passlib) funcionar.
+> `requirements.txt` usa a lib `bcrypt` diretamente para o hash de senha (`bcrypt>=4.0,<5.0`). O `passlib` foi removido por ser incompatível com Python 3.13+.
 
 ## 3. Variáveis de ambiente
 

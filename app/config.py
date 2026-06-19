@@ -18,7 +18,13 @@ class Settings:
     session_https_only: bool = os.getenv("SESSION_HTTPS_ONLY", "0") == "1"
 
     espn_sync_intervalo_min: int = int(os.getenv("ESPN_SYNC_INTERVALO_MIN", "15"))
+    # Intervalo curto usado quando há jogo ao vivo (ou recém-iniciado) — busca
+    # quase em tempo real enquanto a bola rola.
+    espn_sync_intervalo_ao_vivo_min: int = int(os.getenv("ESPN_SYNC_INTERVALO_AO_VIVO_MIN", "1"))
     espn_timeout_s: float = float(os.getenv("ESPN_TIMEOUT_S", "5"))
+
+    # Intervalo (segundos) de auto-refresh da página quando há jogo ao vivo.
+    auto_refresh_ao_vivo_s: int = int(os.getenv("AUTO_REFRESH_AO_VIVO_S", "60"))
 
     @property
     def templates_dir(self) -> Path:

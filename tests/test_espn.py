@@ -154,6 +154,69 @@ class TestParseEventos:
 
 
 # ---------------------------------------------------------------------------
+# Estado ao vivo (em andamento / intervalo)
+# ---------------------------------------------------------------------------
+
+
+def _payload_status(name: str, state: str, gols_c: str | None = "1", gols_v: str | None = "0") -> dict:
+    tipo: dict = {"name": name}
+    if state:
+        tipo["state"] = state
+    return {
+        "events": [
+            {
+                "competitions": [
+                    {
+                        "status": {"type": tipo},
+                        "competitors": [
+                            {"homeAway": "home", "team": {"abbreviation": "USA"}, "score": gols_c},
+                            {"homeAway": "away", "team": {"abbreviation": "AUS"}, "score": gols_v},
+                        ],
+                    }
+                ]
+            }
+        ]
+    }
+
+
+class TestEstadoAoVivo:
+    def test_em_andamento(self) -> None:
+        ev = parse_eventos(_payload_status("STATUS_FIRST_HALF", "in"))[0]
+        assert ev.estado == "in"
+        assert ev.encerrado is False
+        assert ev.ao_vivo is True
+        assert ev.no_intervalo is False
+        assert ev.gols_casa == 1 and ev.gols_visitante == 0
+
+    def test_intervalo(self) -> None:
+        ev = parse_eventos(_payload_status("STATUS_HALFTIME", "in"))[0]
+        assert ev.ao_vivo is True
+        assert ev.no_intervalo is True
+
+    def test_agendado_nao_ao_vivo(self) -> None:
+        ev = parse_eventos(_payload_status("STATUS_SCHEDULED", "pre", None, None))[0]
+        assert ev.ao_vivo is False
+        assert ev.no_intervalo is False
+
+    def test_full_time_nao_ao_vivo(self) -> None:
+        ev = parse_eventos(_load_fixture("espn_20260611.json"))[0]
+        assert ev.encerrado is True
+        assert ev.estado == "post"
+        assert ev.ao_vivo is False
+
+    def test_fallback_sem_state_in_progress(self) -> None:
+        """Sem `state`, um status que não é agendado/cheio é tratado como ao vivo."""
+        ev = parse_eventos(_payload_status("STATUS_IN_PROGRESS", ""))[0]
+        assert ev.estado == ""
+        assert ev.ao_vivo is True
+
+    def test_fallback_sem_state_scheduled(self) -> None:
+        ev = parse_eventos(_payload_status("STATUS_SCHEDULED", "", None, None))[0]
+        assert ev.estado == ""
+        assert ev.ao_vivo is False
+
+
+# ---------------------------------------------------------------------------
 # buscar_scoreboard — HTTP mockado via MockTransport
 # ---------------------------------------------------------------------------
 

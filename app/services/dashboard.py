@@ -13,6 +13,11 @@ from app.services.ranking import chave_de_ranking, contar_buckets_de_pontos
 # Status values used in Jogo.status (plain strings, no enum in the schema).
 STATUS_ENCERRADO = "encerrado"
 STATUS_AGENDADO = "agendado"
+STATUS_EM_ANDAMENTO = "em_andamento"
+STATUS_INTERVALO = "intervalo"
+
+# Estados que representam um jogo "ao vivo" (bola rolando ou intervalo).
+STATUS_AO_VIVO = (STATUS_EM_ANDAMENTO, STATUS_INTERVALO)
 
 _JOGOS_RECENTES_LIMITE = 5
 _PROXIMOS_JOGOS_LIMITE = 5
@@ -49,6 +54,7 @@ class RodadaAbertaView:
 @dataclass(slots=True)
 class DashboardData:
     classificacao: list[ItemClassificacao]
+    jogos_ao_vivo: list[JogoResumoView]
     jogos_recentes: list[JogoResumoView]
     proximos_jogos: list[JogoResumoView]
     rodadas_abertas: list[RodadaAbertaView]
@@ -138,6 +144,36 @@ def _montar_classificacao(db: Session) -> list[ItemClassificacao]:
     return resultado
 
 
+def _montar_jogos_ao_vivo(db: Session) -> list[JogoResumoView]:
+    """Retorna os jogos em andamento ou no intervalo, do mais cedo para o mais tarde."""
+    stmt = (
+        select(
+            Jogo.id,
+            Jogo.data_hora,
+            Jogo.time_casa,
+            Jogo.time_visitante,
+            Jogo.gols_casa,
+            Jogo.gols_visitante,
+            Jogo.status,
+        )
+        .where(Jogo.status.in_(STATUS_AO_VIVO))
+        .order_by(Jogo.data_hora.asc())
+    )
+    rows = db.execute(stmt).all()
+    return [
+        JogoResumoView(
+            jogo_id=r.id,
+            data_hora=r.data_hora,
+            time_casa=r.time_casa,
+            time_visitante=r.time_visitante,
+            gols_casa=r.gols_casa,
+            gols_visitante=r.gols_visitante,
+            status=r.status,
+        )
+        for r in rows
+    ]
+
+
 def _montar_jogos_recentes(db: Session) -> list[JogoResumoView]:
     """Retorna os últimos 5 jogos encerrados, do mais recente para o mais antigo."""
     stmt = (
@@ -216,6 +252,7 @@ def montar_dashboard(db: Session, agora: datetime | None = None) -> DashboardDat
     momento_atual = agora or datetime.now(timezone.utc)
     return DashboardData(
         classificacao=_montar_classificacao(db),
+        jogos_ao_vivo=_montar_jogos_ao_vivo(db),
         jogos_recentes=_montar_jogos_recentes(db),
         proximos_jogos=_montar_proximos_jogos(db),
         rodadas_abertas=_montar_rodadas_abertas(db, momento_atual),

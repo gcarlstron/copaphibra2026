@@ -58,8 +58,8 @@ Este documento resume o estado atual do projeto para retomada por outra IA ou po
 ## Padrões Importantes
 
 - `app/services/prazo.py` normaliza datas para UTC porque o SQLite pode devolver datetime sem timezone. **Sempre** comparar datas via as funções de `prazo.py` (`rodada_aberta_para_edicao`, `palpites_de_terceiros_visiveis`) — comparar `agora` (aware) com colunas do banco (naive) direto causa `TypeError`/500 (foi o bug corrigido na Fase 9 em `palpites.py`).
-- `app/services/auth.py` usa `passlib[bcrypt]`.
-- Na stack atual, `bcrypt<5.0` é necessário no ambiente para evitar falha do backend de hash (pinado no `requirements.txt`).
+- `app/services/auth.py` usa a lib `bcrypt` diretamente (`hashpw`/`checkpw`/`gensalt`). O `passlib` foi removido (2026-06-19): incompatível com Python 3.13+ (módulo `crypt` removido) e disparava `(trapped) error reading bcrypt version` com bcrypt >= 4.1. O formato do hash (`$2b$`) é idêntico, então os hashes legados continuam válidos.
+- `requirements.txt` fixa `bcrypt>=4.0,<5.0`.
 - `Jinja2Templates.TemplateResponse` requer `request` como primeiro argumento nesta versão do FastAPI/Starlette.
 - O smoke test depende de `httpx2` no ambiente de testes.
 - **Produção:** `create_app()` recusa subir se `DEBUG=0` e `SECRET_KEY` for o padrão/vazio. Cookie de sessão com `SameSite=lax` + `Secure` controlado por `SESSION_HTTPS_ONLY`. Env vars: `SECRET_KEY`, `DEBUG`, `DATABASE_URL`, `SESSION_HTTPS_ONLY` (ver `DEPLOY.md` / `.env.example`).

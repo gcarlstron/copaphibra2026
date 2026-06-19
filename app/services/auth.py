@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.orm import Session
 
 from app.models import Usuario
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Tamanho mínimo da nova senha ao trocar (mantido em sincronia com o `minlength`
 # do formulário em templates/trocar_senha.html).
@@ -13,11 +11,17 @@ SENHA_MIN_LENGTH = 6
 
 
 def hash_senha(senha: str) -> str:
-    return pwd_context.hash(senha)
+    """Gera o hash bcrypt da senha (formato ``$2b$``, compatível com hashes legados).
+
+    Usa a lib ``bcrypt`` diretamente — o ``passlib`` foi removido por ser incompatível
+    com Python 3.13+ e disparar avisos com bcrypt >= 4.1.
+    """
+    return bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verificar_senha(senha: str, senha_hash: str) -> bool:
-    return pwd_context.verify(senha, senha_hash)
+    """Verifica a senha contra o hash bcrypt armazenado."""
+    return bcrypt.checkpw(senha.encode("utf-8"), senha_hash.encode("utf-8"))
 
 
 def alterar_senha(
