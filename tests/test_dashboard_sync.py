@@ -1,12 +1,13 @@
 """Tests for dashboard + ESPN sync integration.
 
-O sync de resultados ESPN é disparado ao carregar o dashboard (`GET /`), não mais
-no login. Verifica que:
-- O dashboard dispara o sync como BackgroundTask (usuário autenticado).
-- O dashboard renderiza normalmente mesmo se a ESPN falhar.
-- Acesso anônimo (redirect para /login) NÃO dispara o sync.
-- O login NÃO dispara mais o sync.
-- A BackgroundTask recebe uma factory de sessão e um datetime.
+O sync de resultados ESPN roda de forma SÍNCRONA ao carregar o dashboard (`GET /`),
+ANTES de renderizar, para que a classificação já saia atualizada na 1ª carga (sem
+F5). Verifica que:
+- O dashboard chama o sync síncrono (usuário autenticado), na sessão do request.
+- O dashboard renderiza normalmente mesmo se a ESPN/sync falhar (try/except no router).
+- Acesso anônimo (redirect para /login) NÃO chama o sync.
+- O login NÃO dispara o sync (o gatilho é o dashboard).
+- O sync recebe a sessão do request, um datetime e um `deadline` (orçamento de tempo).
 - O throttle persistido (`SyncState`) respeita a janela mínima.
 """
 
@@ -94,25 +95,24 @@ def _logar(client: TestClient) -> None:
 
 class TestDashboardComSync:
     def test_dashboard_dispara_sync(self, client: TestClient, db_session: Session) -> None:
-        """Carregar o dashboard (autenticado) deve adicionar o sync como BackgroundTask."""
+        """Carregar o dashboard (autenticado) deve chamar o sync síncrono."""
         _seed_usuario(db_session)
         _logar(client)
 
-        mock_disparar = MagicMock()
-        with patch("app.routers.dashboard.disparar_sync_se_necessario", mock_disparar):
+        mock_sync = MagicMock(return_value=True)
+        with patch("app.routers.dashboard.sincronizar_se_necessario", mock_sync):
             resp = client.get("/")
 
         assert resp.status_code == 200
-        # TestClient executa BackgroundTasks sincronamente após a resposta
-        mock_disparar.assert_called_once()
+        mock_sync.assert_called_once()
 
     def test_dashboard_ok_mesmo_com_espn_falhando(
         self, client: TestClient, db_session: Session
     ) -> None:
-        """Dashboard deve renderizar mesmo que sincronizar_resultados lance exceção.
+        """Dashboard deve renderizar mesmo que o sync lance exceção.
 
-        A exceção é absorvida dentro de disparar_sync_se_necessario pelo try/except
-        amplo — nunca deve propagar e quebrar o carregamento da página.
+        A exceção é absorvida pelo try/except do router — nunca deve propagar nem
+        quebrar o carregamento da página; cai para os dados já no banco.
         """
         _seed_usuario(db_session)
         _logar(client)
@@ -128,46 +128,48 @@ class TestDashboardComSync:
     def test_dashboard_anonimo_nao_dispara_sync(
         self, client: TestClient, db_session: Session
     ) -> None:
-        """Acesso anônimo redireciona para /login e NÃO dispara o sync."""
+        """Acesso anônimo redireciona para /login e NÃO chama o sync."""
         _seed_usuario(db_session)
 
-        mock_disparar = MagicMock()
-        with patch("app.routers.dashboard.disparar_sync_se_necessario", mock_disparar):
+        mock_sync = MagicMock(return_value=True)
+        with patch("app.routers.dashboard.sincronizar_se_necessario", mock_sync):
             resp = client.get("/", follow_redirects=False)
 
         assert resp.status_code == 303
         assert resp.headers["location"] == "/login"
-        mock_disparar.assert_not_called()
+        mock_sync.assert_not_called()
 
-    def test_dashboard_sync_usa_sessao_propria(
+    def test_dashboard_sync_recebe_sessao_e_deadline(
         self, client: TestClient, db_session: Session
     ) -> None:
-        """O sync recebe uma factory de sessão (SessionLocal) e um datetime."""
+        """O sync síncrono recebe a sessão do request, um datetime e um deadline."""
         _seed_usuario(db_session)
         _logar(client)
 
-        captured_args: list = []
+        captured: list = []
 
-        def _fake_disparar(db_factory, agora):
-            captured_args.append((db_factory, agora))
+        def _fake_sync(db, agora, deadline=None):
+            captured.append((db, agora, deadline))
+            return True
 
-        with patch("app.routers.dashboard.disparar_sync_se_necessario", _fake_disparar):
+        with patch("app.routers.dashboard.sincronizar_se_necessario", _fake_sync):
             resp = client.get("/")
 
         assert resp.status_code == 200
-        assert len(captured_args) == 1
-        db_factory, agora = captured_args[0]
-        assert callable(db_factory)
+        assert len(captured) == 1
+        db, agora, deadline = captured[0]
+        assert isinstance(db, Session)
         assert isinstance(agora, datetime)
+        assert isinstance(deadline, float)
 
 
 class TestLoginNaoDisparaMaisSync:
     def test_login_nao_chama_sync(self, client: TestClient, db_session: Session) -> None:
-        """O login não deve mais disparar o sync — o gatilho mudou para o dashboard."""
+        """O login não dispara o sync — o gatilho é o dashboard."""
         _seed_usuario(db_session)
 
-        mock_disparar = MagicMock()
-        with patch("app.routers.dashboard.disparar_sync_se_necessario", mock_disparar):
+        mock_sync = MagicMock(return_value=True)
+        with patch("app.routers.dashboard.sincronizar_se_necessario", mock_sync):
             resp = client.post(
                 "/login",
                 data={"username": "user1", "senha": "senha123"},
@@ -176,7 +178,7 @@ class TestLoginNaoDisparaMaisSync:
 
         assert resp.status_code == 303
         assert resp.headers["location"] == "/"
-        mock_disparar.assert_not_called()
+        mock_sync.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

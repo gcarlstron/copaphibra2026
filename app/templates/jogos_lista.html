@@ -22,7 +22,7 @@
 
     {# ── Um card por rodada ─────────────────────────────────────────── #}
     {% for grupo in dados.grupos %}
-    <article class="round-card">
+    <article class="round-card round-card--collapsible" data-panel-id="jogos:rodada:{{ grupo.ordem }}">
 
         <header class="round-head">
             <div>

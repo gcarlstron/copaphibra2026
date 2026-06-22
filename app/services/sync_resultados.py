@@ -1,24 +1,28 @@
 """Service de sincronização de resultados via ESPN.
 
 Fluxo:
-  1. `disparar_sync_se_necessario(db_factory, agora)`:
-       - Chamado como BackgroundTask ao carregar o dashboard (`GET /`).
+  1. `sincronizar_se_necessario(db, agora, deadline=None)`:
+       - Chamado de forma SÍNCRONA ao carregar o dashboard (`GET /`), ANTES de
+         renderizar, na própria sessão do request — a classificação/jogos já saem
+         atualizados na 1ª carga (sem F5). `deadline` limita o tempo de espera.
        - Lê/cria a linha `SyncState(chave="espn_resultados")`.
-       - Verifica throttle: se `ultima_execucao` < `ESPN_SYNC_INTERVALO_MIN` minutos atrás,
-         aborta silenciosamente.
+       - Throttle DINÂMICO: ~1 min quando há jogo ao vivo/iminente, senão 15 min.
        - Grava `ultima_execucao = agora` ANTES de chamar a ESPN (evita corrida em
          acessos simultâneos no Render free).
-       - Abre uma sessão própria (`SessionLocal()`) — a sessão do `Depends(get_db)`
-         já estará fechada quando a BackgroundTask rodar.
-       - Envolve TUDO em try/except — nunca propaga exceção para a requisição.
+       - NÃO captura exceções — o router decide (renderiza com o que há no banco se
+         a ESPN falhar).
+     `disparar_sync_se_necessario(db_factory, agora)` é o wrapper de
+     background/standalone: abre sessão própria, isola erros e fecha a sessão.
 
-  2. `sincronizar_resultados(db, agora)`:
+  2. `sincronizar_resultados(db, agora, deadline=None)`:
        - Seleciona `Jogo` com `data_hora <= agora` e `status != encerrado`.
        - Agrupa por data (do campo `data_hora`).
        - Para cada data pendente chama `buscar_scoreboard_com_janela` (D-1, D, D+1).
-       - Para cada evento encerrado: resolve abrev→nome PT (TeamAlias) → Jogo por
-         (time_casa, time_visitante, date) → chama `lancar_resultado`.
+       - FULL_TIME → resolve abrev→nome PT (TeamAlias) → Jogo → `lancar_resultado`
+         (pontua). Jogo ao vivo (em andamento/intervalo) → atualiza status/placar
+         SEM pontuar.
        - Abreviação sem de-para ou evento sem Jogo: incrementa contador e loga WARNING.
+       - `deadline` (segundos de `time.monotonic()`): orçamento total das buscas.
        - Retorna `ResumoSync` com os contadores.
 
 Decisão de fuso (2026-06-19):
@@ -31,6 +35,7 @@ Decisão de fuso (2026-06-19):
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -82,10 +87,16 @@ class ResumoSync:
 def sincronizar_resultados(
     db: Session,
     agora: datetime,
+    deadline: float | None = None,
 ) -> ResumoSync:
     """Busca resultados na ESPN e lança os que ainda não estão encerrados no banco.
 
     Idempotente: jogos já encerrados são ignorados.
+
+    `deadline` (opcional, em segundos de `time.monotonic()`): orçamento total de
+    tempo para as buscas na ESPN. Usado no caminho síncrono do dashboard. Ao
+    estourar, as datas ainda não consultadas são puladas (resumo parcial) e a
+    página renderiza com o que já estiver no banco.
     """
     resumo = ResumoSync()
 
@@ -119,10 +130,19 @@ def sincronizar_resultados(
     # 4. Para cada data, busca a ESPN UMA única vez e materializa os eventos.
     #    A estrutura é reutilizada tanto para lançar resultados quanto para
     #    contar ignorados_sem_jogo — eliminando a segunda rodada de fetch.
+    #    O `deadline` (caminho síncrono) limita o tempo total de espera.
     eventos_por_data: dict[date, list] = {}
     for data_alvo in jogos_por_data:
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.warning(
+                "Deadline do sync atingido; data %s não consultada na ESPN.", data_alvo
+            )
+            eventos_por_data[data_alvo] = []
+            continue
         try:
-            eventos_por_data[data_alvo] = buscar_scoreboard_com_janela(data_alvo)
+            eventos_por_data[data_alvo] = buscar_scoreboard_com_janela(
+                data_alvo, deadline=deadline
+            )
         except EspnClientError as exc:
             logger.warning("ESPN indisponível para %s: %s", data_alvo, exc)
             eventos_por_data[data_alvo] = []
@@ -281,7 +301,7 @@ def sincronizar_resultados(
 
 
 # ---------------------------------------------------------------------------
-# Throttle + disparo via BackgroundTask
+# Throttle + disparo
 # ---------------------------------------------------------------------------
 
 
@@ -325,59 +345,80 @@ def _intervalo_efetivo_min(db: Session, agora: datetime, settings) -> int:
     return settings.espn_sync_intervalo_min
 
 
+def sincronizar_se_necessario(
+    db: Session,
+    agora: datetime,
+    deadline: float | None = None,
+) -> bool:
+    """Executa o sync respeitando o throttle, usando a sessão fornecida.
+
+    Usado no caminho SÍNCRONO do dashboard (`GET /`): roda ANTES de renderizar,
+    na própria sessão do request, para que `montar_dashboard` já enxergue os
+    resultados/jogos ao vivo recém-atualizados.
+
+    - Throttle DINÂMICO via `_intervalo_efetivo_min` (~1 min com jogo ao vivo).
+    - Grava `ultima_execucao = agora` ANTES de chamar a ESPN (evita corrida).
+    - `deadline` (segundos de `time.monotonic()`): orçamento total repassado à
+      busca na ESPN, para a página não travar se a ESPN estiver lenta/fora.
+
+    Retorna `True` se o sync rodou (janela aberta), `False` se foi throttled.
+    NÃO captura exceções — o caller (router) decide como tratar; assim a página
+    pode renderizar com os dados existentes se a ESPN falhar.
+    """
+    settings = get_settings()
+    # Intervalo dinâmico: ~1 min enquanto há jogo ao vivo; 15 min caso contrário.
+    intervalo_min = _intervalo_efetivo_min(db, agora, settings)
+    agora_utc = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
+
+    estado = _get_or_create_sync_state(db, CHAVE_SYNC)
+
+    # Throttle: respeita a janela mínima
+    if estado.ultima_execucao is not None:
+        ultima = estado.ultima_execucao
+        # Normaliza para UTC se tiver tzinfo
+        if ultima.tzinfo is None:
+            ultima = ultima.replace(tzinfo=timezone.utc)
+        diferenca = agora_utc - ultima
+        if diferenca < timedelta(minutes=intervalo_min):
+            logger.debug(
+                "Sync ESPN throttled: última execução há %.1f min (intervalo=%d min).",
+                diferenca.total_seconds() / 60,
+                intervalo_min,
+            )
+            return False
+
+    # Grava timestamp ANTES de chamar a ESPN (evita corrida)
+    estado.ultima_execucao = agora_utc
+    db.commit()
+
+    logger.info("Iniciando sincronização de resultados ESPN.")
+    resumo = sincronizar_resultados(db, agora_utc, deadline=deadline)
+    logger.info(
+        "Sync ESPN concluído: %d lançados, %d ao vivo, %d sem de-para, %d sem jogo.",
+        resumo.lancados,
+        resumo.atualizados_ao_vivo,
+        resumo.ignorados_sem_depara,
+        resumo.ignorados_sem_jogo,
+    )
+    return True
+
+
 def disparar_sync_se_necessario(
     db_factory: Callable[[], Session],
     agora: datetime,
 ) -> None:
-    """Ponto de entrada para a BackgroundTask do dashboard (`GET /`).
+    """Wrapper de background/standalone: abre sessão própria e isola erros.
 
-    - Abre sessão própria (a sessão do request já está fechada quando esta função
-      roda como BackgroundTask).
-    - Verifica throttle via `SyncState` persistido no banco.
-    - Grava `ultima_execucao = agora` ANTES de chamar a ESPN para evitar corrida
-      em acessos simultâneos.
-    - Envolve TUDO em try/except amplo — nunca propaga exceção; o carregamento do
-      dashboard não pode quebrar por causa de falha na ESPN.
+    Mantido para usos fora do request (ex.: tarefa agendada/CLI). Diferente do
+    caminho síncrono do dashboard:
+    - Abre uma sessão própria via `db_factory` e a fecha ao final.
+    - Envolve TUDO em try/except amplo — nunca propaga exceção.
+    - Sem `deadline` (orçamento ilimitado), pois não bloqueia nenhuma resposta.
     """
     db = db_factory()
     try:
-        settings = get_settings()
-        # Intervalo dinâmico: ~1 min enquanto há jogo ao vivo; 15 min caso contrário.
-        intervalo_min = _intervalo_efetivo_min(db, agora, settings)
-
-        estado = _get_or_create_sync_state(db, CHAVE_SYNC)
-
-        # Throttle: respeita a janela mínima
-        if estado.ultima_execucao is not None:
-            ultima = estado.ultima_execucao
-            # Normaliza para UTC se tiver tzinfo
-            if ultima.tzinfo is None:
-                ultima = ultima.replace(tzinfo=timezone.utc)
-            agora_utc = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
-            diferenca = agora_utc - ultima
-            if diferenca < timedelta(minutes=intervalo_min):
-                logger.debug(
-                    "Sync ESPN throttled: última execução há %.1f min (intervalo=%d min).",
-                    diferenca.total_seconds() / 60,
-                    intervalo_min,
-                )
-                return
-
-        # Grava timestamp ANTES de chamar a ESPN (evita corrida)
-        agora_utc = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
-        estado.ultima_execucao = agora_utc
-        db.commit()
-
-        logger.info("Iniciando sincronização de resultados ESPN.")
-        resumo = sincronizar_resultados(db, agora_utc)
-        logger.info(
-            "Sync ESPN concluído: %d lançados, %d sem de-para, %d sem jogo.",
-            resumo.lancados,
-            resumo.ignorados_sem_depara,
-            resumo.ignorados_sem_jogo,
-        )
-
+        sincronizar_se_necessario(db, agora)
     except Exception:
-        logger.exception("Erro inesperado no sync ESPN; ignorando para não afetar o login.")
+        logger.exception("Erro inesperado no sync ESPN; ignorando para não afetar o caller.")
     finally:
         db.close()

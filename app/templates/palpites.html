@@ -10,7 +10,7 @@
     </div>
 
     {% for rodada in rodadas %}
-    <article class="round-card">
+    <article class="round-card round-card--collapsible" data-panel-id="palpites:rodada:{{ rodada.rodada_nome }}">
         <header class="round-head">
             <div>
                 <h3>{{ rodada.rodada_nome }}</h3>

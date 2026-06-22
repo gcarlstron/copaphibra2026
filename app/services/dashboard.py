@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Jogo, Palpite, Rodada, Usuario
+from app.models.sync_state import SyncState
 from app.services.prazo import rodada_aberta_para_edicao
 from app.services.ranking import chave_de_ranking, contar_buckets_de_pontos
 
@@ -58,10 +59,32 @@ class DashboardData:
     jogos_recentes: list[JogoResumoView]
     proximos_jogos: list[JogoResumoView]
     rodadas_abertas: list[RodadaAbertaView]
+    # Última sincronização de resultados com a ESPN (None se nunca rodou).
+    ultima_sync: datetime | None = None
+    # Texto relativo amigável da última sync (ex.: "há 3 min"); None se nunca rodou.
+    ultima_sync_texto: str | None = None
 
 
-def _montar_classificacao(db: Session) -> list[ItemClassificacao]:
-    """Agrega pontos de cada usuário ativo e ordena pelo critério de desempate."""
+def _rodadas_abertas_para_edicao_ids(db: Session, agora: datetime) -> set[int]:
+    """IDs das rodadas abertas para edição AGORA (palpites ainda em sigilo)."""
+    stmt = select(Rodada.id, Rodada.aberta, Rodada.abertura, Rodada.fechamento)
+    return {
+        r.id
+        for r in db.execute(stmt).all()
+        if rodada_aberta_para_edicao(r.aberta, r.abertura, r.fechamento, agora)
+    }
+
+
+def _montar_classificacao(db: Session, agora: datetime) -> list[ItemClassificacao]:
+    """Agrega pontos de cada usuário ativo e ordena pelo critério de desempate.
+
+    Privacidade (Regra #4): pontos de jogos cuja rodada ainda está ABERTA para
+    edição não entram na soma. Caso contrário, um jogo encerrado dentro de uma
+    rodada ainda aberta (lançar resultado encerra o jogo mas não a rodada —
+    decisão D3) faria o total/buckets revelarem que o jogador pontuou antes de a
+    rodada fechar. No fluxo normal isto é um no-op: palpites de rodada aberta
+    valem 0 (sem resultado lançado) e não afetam total nem buckets.
+    """
     # Busca todos os usuários ativos com seleção explícita de colunas.
     stmt_usuarios = select(Usuario.id, Usuario.nome).where(Usuario.ativo == True)  # noqa: E712
     usuarios = db.execute(stmt_usuarios).all()
@@ -70,19 +93,23 @@ def _montar_classificacao(db: Session) -> list[ItemClassificacao]:
         return []
 
     usuario_ids = [u.id for u in usuarios]
+    rodadas_abertas = _rodadas_abertas_para_edicao_ids(db, agora)
 
-    # Busca todos os palpites com pontos dos usuários ativos.
-    # Palpites com pontos == 0 e sem resultado lançado também são incluídos
-    # (pontos = 0 é o default; só conta o que foi lançado).
-    stmt_palpites = select(Palpite.usuario_id, Palpite.pontos).where(
-        Palpite.usuario_id.in_(usuario_ids)
+    # Busca os palpites dos usuários ativos junto com a rodada do jogo, para
+    # excluir os de rodadas ainda abertas para edição (ver docstring).
+    stmt_palpites = (
+        select(Palpite.usuario_id, Palpite.pontos, Jogo.rodada_id)
+        .join(Jogo, Palpite.jogo_id == Jogo.id)
+        .where(Palpite.usuario_id.in_(usuario_ids))
     )
     palpite_rows = db.execute(stmt_palpites).all()
 
-    # Agrupa pontos por usuário.
+    # Agrupa pontos por usuário, ignorando rodadas ainda abertas para edição.
     pontos_por_usuario: dict[int, list[int]] = {u.id: [] for u in usuarios}
-    for usuario_id, pontos in palpite_rows:
-        pontos_por_usuario[usuario_id].append(pontos)
+    for row in palpite_rows:
+        if row.rodada_id in rodadas_abertas:
+            continue
+        pontos_por_usuario[row.usuario_id].append(row.pontos)
 
     # Monta as entradas sem posição ainda, para poder ordenar depois.
     @dataclass(slots=True)
@@ -247,13 +274,56 @@ def _montar_rodadas_abertas(db: Session, agora: datetime) -> list[RodadaAbertaVi
     return abertas
 
 
+def _obter_ultima_sync(db: Session) -> datetime | None:
+    """Lê o timestamp da última sincronização de resultados ESPN (SyncState)."""
+    # Import adiado: evita ciclo (sync_resultados importa STATUS_ENCERRADO daqui).
+    from app.services.sync_resultados import CHAVE_SYNC
+
+    return db.scalar(
+        select(SyncState.ultima_execucao).where(SyncState.chave == CHAVE_SYNC)
+    )
+
+
+def _descrever_ultima_sync(quando: datetime | None, agora: datetime) -> str | None:
+    """Descreve, de forma relativa e amigável, quando foi a última sincronização.
+
+    Ex.: "agora mesmo", "há 3 min", "há 2 h", "há 5 d". Retorna None se nunca rodou.
+    Normaliza valores naive para UTC (o SQLite devolve datetimes sem tzinfo).
+    """
+    if quando is None:
+        return None
+
+    q = quando if quando.tzinfo is not None else quando.replace(tzinfo=timezone.utc)
+    a = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
+
+    segundos = (a - q).total_seconds()
+    if segundos < 0:
+        segundos = 0
+    if segundos < 60:
+        return "agora mesmo"
+
+    minutos = int(segundos // 60)
+    if minutos < 60:
+        return f"há {minutos} min"
+
+    horas = minutos // 60
+    if horas < 24:
+        return f"há {horas} h"
+
+    dias = horas // 24
+    return f"há {dias} d"
+
+
 def montar_dashboard(db: Session, agora: datetime | None = None) -> DashboardData:
     """Agrega todos os dados necessários para a tela de dashboard/classificação."""
     momento_atual = agora or datetime.now(timezone.utc)
+    ultima_sync = _obter_ultima_sync(db)
     return DashboardData(
-        classificacao=_montar_classificacao(db),
+        classificacao=_montar_classificacao(db, momento_atual),
         jogos_ao_vivo=_montar_jogos_ao_vivo(db),
         jogos_recentes=_montar_jogos_recentes(db),
         proximos_jogos=_montar_proximos_jogos(db),
         rodadas_abertas=_montar_rodadas_abertas(db, momento_atual),
+        ultima_sync=ultima_sync,
+        ultima_sync_texto=_descrever_ultima_sync(ultima_sync, momento_atual),
     )

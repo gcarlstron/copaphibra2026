@@ -22,6 +22,10 @@ class Settings:
     # quase em tempo real enquanto a bola rola.
     espn_sync_intervalo_ao_vivo_min: int = int(os.getenv("ESPN_SYNC_INTERVALO_AO_VIVO_MIN", "1"))
     espn_timeout_s: float = float(os.getenv("ESPN_TIMEOUT_S", "5"))
+    # Orçamento total (segundos) para o sync síncrono no carregamento do dashboard.
+    # Limita o tempo máximo que a página espera pela ESPN antes de renderizar com o
+    # que já está no banco. Não afeta o caminho de background (sem orçamento).
+    espn_sync_deadline_s: float = float(os.getenv("ESPN_SYNC_DEADLINE_S", "8"))
 
     # Intervalo (segundos) de auto-refresh da página quando há jogo ao vivo.
     auto_refresh_ao_vivo_s: int = int(os.getenv("AUTO_REFRESH_AO_VIVO_S", "60"))

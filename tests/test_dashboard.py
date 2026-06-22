@@ -475,3 +475,107 @@ def test_get_dashboard_ok_com_login(client: TestClient, db_session: Session) -> 
     assert response.status_code == 200
     # Garante que a página renderizou com algo da classificação.
     assert "Classificação" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Testes: privacidade do ranking — pontos de rodada aberta não contam (Fase 13)
+# ---------------------------------------------------------------------------
+
+
+def test_classificacao_ignora_pontos_de_rodada_aberta(db_session: Session) -> None:
+    """Jogo encerrado dentro de uma rodada AINDA ABERTA não soma pontos no ranking.
+
+    Protege a Regra #4: sem isso, o bucket/total revelariam que o jogador pontuou
+    antes de a rodada fechar.
+    """
+    user = _seed_usuario(db_session, "Bernardo", "bernardo")
+    rodada = _seed_rodada(db_session, nome="2ª Rodada", ordem=2, aberta=True)
+    jogo = _seed_jogo(
+        db_session,
+        rodada,
+        "BRA",
+        "ARG",
+        _AGORA - timedelta(hours=1),
+        status=STATUS_ENCERRADO,
+        gols_casa=1,
+        gols_visitante=0,
+    )
+    _seed_palpite(db_session, user, jogo, pontos=9)
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+    bernardo = next(i for i in dados.classificacao if i.nome == "Bernardo")
+    assert bernardo.total == 0
+    assert bernardo.qtd_9 == 0
+
+
+def test_classificacao_conta_pontos_apos_rodada_fechar(db_session: Session) -> None:
+    """Os mesmos pontos passam a contar quando a rodada está fechada para edição."""
+    user = _seed_usuario(db_session, "Bernardo", "bernardo")
+    rodada = _seed_rodada(db_session, nome="2ª Rodada", ordem=2, aberta=False)
+    jogo = _seed_jogo(
+        db_session,
+        rodada,
+        "BRA",
+        "ARG",
+        _AGORA - timedelta(hours=1),
+        status=STATUS_ENCERRADO,
+        gols_casa=1,
+        gols_visitante=0,
+    )
+    _seed_palpite(db_session, user, jogo, pontos=9)
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+    bernardo = next(i for i in dados.classificacao if i.nome == "Bernardo")
+    assert bernardo.total == 9
+    assert bernardo.qtd_9 == 1
+
+
+# ---------------------------------------------------------------------------
+# Testes: indicador de última sincronização (Fase 10g)
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_inclui_ultima_sync(db_session: Session) -> None:
+    """montar_dashboard expõe a última sincronização e seu texto relativo."""
+    from app.models.sync_state import SyncState
+    from app.services.sync_resultados import CHAVE_SYNC
+
+    db_session.add(
+        SyncState(chave=CHAVE_SYNC, ultima_execucao=_AGORA - timedelta(minutes=3))
+    )
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+    assert dados.ultima_sync is not None
+    assert dados.ultima_sync_texto == "há 3 min"
+
+
+def test_dashboard_sem_sync_state(db_session: Session) -> None:
+    """Sem nenhuma sincronização registrada, os campos vêm None."""
+    dados = montar_dashboard(db_session, _AGORA)
+    assert dados.ultima_sync is None
+    assert dados.ultima_sync_texto is None
+
+
+def test_descrever_ultima_sync_faixas() -> None:
+    """O texto relativo cobre as faixas: agora / min / h / d / None."""
+    from app.services.dashboard import _descrever_ultima_sync
+
+    a = _AGORA
+    assert _descrever_ultima_sync(None, a) is None
+    assert _descrever_ultima_sync(a - timedelta(seconds=10), a) == "agora mesmo"
+    assert _descrever_ultima_sync(a - timedelta(minutes=5), a) == "há 5 min"
+    assert _descrever_ultima_sync(a - timedelta(hours=2), a) == "há 2 h"
+    assert _descrever_ultima_sync(a - timedelta(days=3), a) == "há 3 d"
+    # data futura (relógios fora de sincronia) não quebra → "agora mesmo"
+    assert _descrever_ultima_sync(a + timedelta(minutes=1), a) == "agora mesmo"
+
+
+def test_descrever_ultima_sync_normaliza_naive() -> None:
+    """Valor naive (como o SQLite devolve) é normalizado para UTC sem quebrar."""
+    from app.services.dashboard import _descrever_ultima_sync
+
+    naive = (_AGORA - timedelta(minutes=10)).replace(tzinfo=None)
+    assert _descrever_ultima_sync(naive, _AGORA) == "há 10 min"

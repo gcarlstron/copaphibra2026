@@ -43,7 +43,7 @@
 
     {# ── Jogos ao vivo ────────────────────────────────────────────── #}
     {% if dados.jogos_ao_vivo %}
-    <article class="round-card live-card">
+    <article class="round-card live-card round-card--collapsible" data-panel-id="dashboard:ao_vivo">
         <header class="round-head">
             <div>
                 <h3>Ao vivo agora</h3>
@@ -68,12 +68,18 @@
     {% endif %}
 
     {# ── Tabela de classificação ──────────────────────────────────── #}
-    <article class="round-card">
+    <article class="round-card round-card--collapsible" data-panel-id="dashboard:classificacao">
         <header class="round-head">
             <div>
                 <h3>Classificação geral</h3>
                 <p class="muted">Posições, pontos e critérios de desempate</p>
             </div>
+            {% if dados.ultima_sync_texto %}
+            <p class="sync-status muted" title="Resultados buscados automaticamente na ESPN ao abrir o dashboard">
+                <span class="sync-status-dot" aria-hidden="true"></span>
+                Resultados atualizados {{ dados.ultima_sync_texto }}
+            </p>
+            {% endif %}
         </header>
 
         {% if dados.classificacao %}
@@ -124,7 +130,7 @@
     <div class="dashboard-grid">
 
         {# Últimos resultados #}
-        <article class="round-card">
+        <article class="round-card round-card--collapsible" data-panel-id="dashboard:recentes">
             <header class="round-head">
                 <div>
                     <h3>Últimos resultados</h3>
@@ -153,7 +159,7 @@
         </article>
 
         {# Próximos jogos #}
-        <article class="round-card">
+        <article class="round-card round-card--collapsible" data-panel-id="dashboard:proximos">
             <header class="round-head">
                 <div>
                     <h3>Próximos jogos</h3>
@@ -164,14 +170,14 @@
             {% if dados.proximos_jogos %}
             <div class="match-list">
                 {% for jogo in dados.proximos_jogos %}
-                <div class="upcoming-row">
+                <a href="/jogos/{{ jogo.jogo_id }}" class="upcoming-row">
                     <span class="upcoming-teams">
                         <strong>{{ jogo.time_casa }}</strong>
                         <span class="result-vs">vs</span>
                         <strong>{{ jogo.time_visitante }}</strong>
                     </span>
                     <span class="upcoming-date">{{ jogo.data_hora.strftime('%d/%m %H:%M') }}</span>
-                </div>
+                </a>
                 {% endfor %}
             </div>
             {% else %}

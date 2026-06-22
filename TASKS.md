@@ -165,11 +165,14 @@ QA auditou (caminho crítico do login): veredito PRONTA, 2 importantes corrigido
 - [ ] Push do código (dispara deploy no Render) — o sync passa a rodar no login em produção
 - [ ] (Opcional, decidir) backfill imediato: rodar o sync uma vez na Neon, ou deixar o 1º login preencher
 
-### 10g — UI (opcional, fora do MVP)
-- [ ] (Opcional) Indicador "última atualização de resultados" no dashboard, lendo `sync_state.ultima_execucao` → @frontend
+### 10g — UI (concluída — 2026-06-22)
+- [x] ✅ Indicador "Resultados atualizados há X min" no dashboard, lendo `sync_state.ultima_execucao`. `montar_dashboard` expõe `ultima_sync` + `ultima_sync_texto` (helper puro `_descrever_ultima_sync`: agora/min/h/d, normaliza naive→UTC, futuro→"agora mesmo"); badge discreto (ponto verde) no cabeçalho da classificação (`dashboard.html` + `.sync-status` no `app.css`); 4 testes novos em `test_dashboard.py` → @backend + @frontend — 2026-06-22
 
 ### Ajuste (2026-06-19): gatilho do sync movido para o dashboard
 - [x] ✅ O sync ESPN passa a ser disparado ao carregar o dashboard (`GET /`), não mais no `POST /login` — cobre quem mantém a sessão aberta e só recarrega a home. Mesmo padrão (BackgroundTask + `SessionLocal` + throttle persistido); só para usuário autenticado. `BackgroundTasks` removido de `routers/auth.py`; `routers/dashboard.py` ganha o disparo. Testes movidos `test_login_sync.py` → `test_dashboard_sync.py` (dispara/falha-isolada/anônimo-não-dispara/sessão-própria/login-não-dispara-mais + throttle). **183 testes** → @backend — 2026-06-19
+
+### Ajuste (2026-06-22): sync ESPN passa a ser SÍNCRONO no dashboard
+- [x] ✅ Antes o sync rodava como `BackgroundTask` (depois da resposta), então a 1ª carga mostrava dados antigos e só após F5 apareciam os novos. Agora o `GET /` chama `sincronizar_se_necessario(db, agora, deadline=...)` de forma **síncrona, ANTES** de `montar_dashboard`, na própria sessão do request — a classificação/jogos já saem atualizados na 1ª carga. Fallback preservado: `try/except` no router + erros da ESPN engolidos → renderiza com os dados do banco se a API não responder. `deadline` (`ESPN_SYNC_DEADLINE_S=8`) limita o tempo de espera (relógio monotônico) propagado a `buscar_scoreboard_com_janela`/`sincronizar_resultados`; throttle de 15 min mantido (só o 1º acesso da janela paga o fetch). `disparar_sync_se_necessario` mantido como wrapper de background/standalone (abre sessão própria + isola erro). `test_dashboard_sync.py` atualizado (chamada síncrona/falha-isolada/anônimo/recebe-sessão+deadline/login-não-dispara + throttle). **183 testes** → @backend — 2026-06-22
 
 ---
 
@@ -231,6 +234,40 @@ sozinha. Sem migração (`status` String(20) comporta os valores novos). **198 t
 - [ ] Push do código → dispara deploy no Render
 
 ---
+
+## Fase 13 — Privacidade dos palpites: verificação + endurecimento (concluída — 2026-06-22)
+
+Regra inviolável #4: enquanto a rodada está **aberta** para palpite, um jogador **não vê o
+palpite dos outros**; só depois que a rodada **fecha** todos veem os de todos.
+
+- [x] ✅ **Auditoria de QA (read-only) — veredito PRIVACIDADE OK:** nenhum caminho expõe o **placar palpitado** de terceiros com a rodada aberta. A gating é feita escolhendo *qual query roda* no service (o dado sensível nem sai do banco), em todas as superfícies: `detalhe_do_jogo` (via `palpites_de_terceiros_visiveis`), `listar_todos_os_jogos`/`listar_palpites_do_usuario` (query amarrada a `usuario_id`), dashboard (só agrega `pontos`, nunca o placar), admin (sem bypass — admin também não vê), HTMX (só `204 + redirect`). Bordas de `palpites_de_terceiros_visiveis` validadas (agendada/sem janela/fechamento passado-futuro/naive). **Decisão confirmada:** admin segue sujeito à privacidade (sem bypass) → @qa — 2026-06-22
+- [x] ✅ **Endurecimento do Risco #1 (pontos no ranking):** `_montar_classificacao` agora só soma `Palpite.pontos` de jogos cuja rodada **não** está aberta para edição (`_rodadas_abertas_para_edicao_ids` + JOIN em `Jogo`). Fecha a brecha de um jogo encerrado dentro de uma rodada ainda aberta (lançar resultado não fecha a rodada — D3) revelar via bucket/total que o jogador pontuou antes de a rodada fechar. No fluxo normal é no-op (palpite de rodada aberta vale 0). Testes: `test_dashboard.py` (rodada aberta→0 pts / fechada→conta) + 3 bordas em `test_prazo.py`. **192 testes** → @backend — 2026-06-22
+
+_Follow-ups menores do QA (não bloqueantes):_
+- _`services/jogos.py` ramo do "próprio palpite" não filtra `Usuario.ativo` (inofensivo — usuário sempre vê o próprio)._
+- _`services/palpites.py` calcula `terceiros_visiveis` mas o template `palpites.html` não usa (campo morto; remover ou documentar)._
+
+## Fase 14 — Melhorias de UX dos painéis (preparada — 2026-06-22)
+
+Frontend puro (sem backend). Duas melhorias na experiência das telas do jogador.
+
+### 14a — Painéis recolhíveis ("minimizar" para uma linha)
+Todo painel `round-card` pode ser **recolhido** para mostrar só o cabeçalho (uma linha),
+para a pessoa esconder o que não quer ver no momento. Vale para todos os cards que hoje
+usam o mesmo padrão `<article class="round-card"><header class="round-head">…`:
+- **Dashboard** (`dashboard.html`): Classificação geral, Últimos resultados, Próximos jogos.
+- **Todos os jogos** (`jogos_lista.html`): um card por rodada (1ª, 2ª, 3ª…).
+- **Meus palpites** (`palpites.html`): um card por rodada.
+- (Fora do escopo por ora: cards do `admin/`.)
+
+Abordagem (parametrizada por **classe**, decidida com o usuário 2026-06-22):
+- [ ] Recolhibilidade é **opt-in por classe**: `round-card--collapsible`. Um painel só recolhe se tiver a classe — para desativar, basta não pô-la (hoje vai em todos os 5). Mantém a casca `<article class="round-card">` intacta (sem converter para `<details>`), só acrescenta a classe + `data-panel-id` estável.
+- [ ] `static/js/ui.js` (incluído no `base.html`) varre `.round-card--collapsible`, injeta um chevron no `.round-head`, torna o cabeçalho clicável (com `role=button`/`tabindex`/`aria-expanded` e teclado Enter/Espaço), e alterna a classe `is-collapsed` no card. Ignora cliques em `a/button/input/form/label` dentro do header.
+- [ ] CSS: `.round-card.is-collapsed > :not(.round-head) { display:none }` (vira uma linha); chevron posicionado de forma absoluta (não desarruma o elemento à direita do header) e girando no estado recolhido.
+- [ ] **Persistir** por painel em `localStorage` (`data-panel-id`, ex.: `dashboard:classificacao`) — senão todo reload (o dashboard recarrega ao sincronizar) reabre tudo. Fallback sem JS: painel aberto (comportamento atual).
+
+### 14b — "Próximos jogos" clicável (vai pro detalhe do jogo)
+- [ ] No `dashboard.html`, a seção **Próximos jogos** usa `<div class="upcoming-row">` (não clicável). Trocar por `<a href="/jogos/{{ jogo.jogo_id }}">` como já é em "Últimos resultados" (`result-row`), ajustando o CSS (`.upcoming-row` → estado clicável/hover). O `jogo_id` já vem no `JogoResumoView`, então é só template + CSS.
 
 ## Backlog / Fase 2 (futuro)
 
