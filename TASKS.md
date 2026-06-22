@@ -247,9 +247,19 @@ _Follow-ups menores do QA (não bloqueantes):_
 - _`services/jogos.py` ramo do "próprio palpite" não filtra `Usuario.ativo` (inofensivo — usuário sempre vê o próprio)._
 - _`services/palpites.py` calcula `terceiros_visiveis` mas o template `palpites.html` não usa (campo morto; remover ou documentar)._
 
-## Fase 14 — Melhorias de UX dos painéis (preparada — 2026-06-22)
+## Fase 14 — Melhorias de UX dos painéis (concluída + no ar — 2026-06-22)
 
-Frontend puro (sem backend). Duas melhorias na experiência das telas do jogador.
+Frontend puro (sem backend). **Implementada e no ar** (deploy `b2436ee`, PR #3). Conforme
+o detalhamento abaixo (14a/14b feitos). **Ajuste do usuário pós-deploy:** o recolhível foi
+mantido em "Ao vivo agora" e "Classificação geral" e **removido** de "Últimos resultados" e
+"Próximos jogos" (lado a lado na grade não ficou bom) — esse ajuste está no commit `fix:` da
+branch `chore/follow-ups-qa` (ver Fase 15), ainda **não** no ar.
+
+> Incidente de deploy (2026-06-22): após o merge, o navegador servia `app.css` antigo (sem as
+> regras de recolhível) → parecia que "não minimizava". Causa: falta de cache-busting + cache do
+> Render. Render resolvido com **restart do serviço**; o cache do navegador fica para a Fase 15.
+
+Duas melhorias na experiência das telas do jogador.
 
 ### 14a — Painéis recolhíveis ("minimizar" para uma linha)
 Todo painel `round-card` pode ser **recolhido** para mostrar só o cabeçalho (uma linha),
@@ -268,6 +278,21 @@ Abordagem (parametrizada por **classe**, decidida com o usuário 2026-06-22):
 
 ### 14b — "Próximos jogos" clicável (vai pro detalhe do jogo)
 - [ ] No `dashboard.html`, a seção **Próximos jogos** usa `<div class="upcoming-row">` (não clicável). Trocar por `<a href="/jogos/{{ jogo.jogo_id }}">` como já é em "Últimos resultados" (`result-row`), ajustando o CSS (`.upcoming-row` → estado clicável/hover). O `jogo_id` já vem no `JogoResumoView`, então é só template + CSS.
+
+## Fase 15 — Follow-ups técnicos/QA (em andamento — branch `chore/follow-ups-qa`)
+
+Branch criada a partir da `main` pós-deploy. **1º commit feito:** `fix:` removendo o recolhível
+de "Últimos resultados"/"Próximos jogos" (ajuste do usuário, sobe junto com a PR desta fase).
+Branch **local, ainda não pushed**. Itens pendentes (paramos aqui em 2026-06-22 para retomar depois):
+
+- [ ] **Cache-busting dos estáticos (prioritário):** anexar versão na URL de `app.css`/`ui.js` no `base.html` (ex.: `?v={{ asset_version }}` derivado de `RENDER_GIT_COMMIT`, ou hash/mtime), para **todo deploy invalidar o cache do navegador**. Motivo: no deploy do `b2436ee` o navegador serviu `app.css` antigo e o recolher só funcionou após hard refresh. Sem isso, recorre a cada deploy.
+- [ ] **Importador idempotente na senha:** `scripts/importar_planilha.py::_get_or_create_usuario` reaplica `senha_hash` a cada execução — **não** resetar a senha de quem já existe (só setar senha ao criar). Preserva a troca de senha dos jogadores. + testes (rodar 2x não muda hash existente; não-clobber do admin).
+- [ ] **`UniqueConstraint(rodada_id, time_casa, time_visitante)` em `Jogo`:** model + **nova migração Alembic** (e aplicar na Neon — passo de deploy). Atenção: duplicatas em prod fariam a migração falhar (improvável — importador é get-or-create).
+- [ ] **Remover campo morto `terceiros_visiveis`** de `services/palpites.py` (`JogoPalpiteView`/`RodadaPalpitesView`); não é usado no template. Ajustar o teste de regressão de timezone em `test_palpites.py` (hoje asserta nesse campo) para checar `aberta_para_edicao`/não-crash; remover o import de `palpites_de_terceiros_visiveis` se ficar sem uso.
+- [ ] **Type hints do importador:** trocar `object`/`# type: ignore` por `Worksheet`/`Session`/`Callable` em `importar_planilha.py`.
+- [ ] (Menor) filtrar `Usuario.ativo` no ramo do "próprio palpite" em `services/jogos.py` (inofensivo hoje).
+
+_Retomada: `git checkout chore/follow-ups-qa`; implementar os itens; rodar a suíte; push + PR (o commit `fix:` dos cards entra junto)._
 
 ## Backlog / Fase 2 (futuro)
 
