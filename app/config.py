@@ -38,6 +38,21 @@ class Settings:
     def static_dir(self) -> Path:
         return PROJECT_ROOT / "app" / "static"
 
+    @property
+    def asset_version(self) -> str:
+        """Versão dos estáticos para cache-busting — muda a cada deploy.
+
+        Produção (Render): usa o commit do deploy (`RENDER_GIT_COMMIT`), assim todo
+        deploy invalida o cache do navegador. Local: cai no mtime de app.css/ui.js,
+        mudando quando você edita os estáticos.
+        """
+        commit = os.getenv("RENDER_GIT_COMMIT", "").strip()
+        if commit:
+            return commit[:12]
+        arquivos = [self.static_dir / "css" / "app.css", self.static_dir / "js" / "ui.js"]
+        mtimes = [int(p.stat().st_mtime) for p in arquivos if p.exists()]
+        return str(max(mtimes)) if mtimes else "dev"
+
 
 def get_settings() -> Settings:
     return Settings()

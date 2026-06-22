@@ -36,7 +36,9 @@ router = APIRouter(prefix="/admin")
 
 def _templates() -> Jinja2Templates:
     settings = get_settings()
-    return Jinja2Templates(directory=str(settings.templates_dir))
+    templates = Jinja2Templates(directory=str(settings.templates_dir))
+    templates.env.globals["asset_version"] = settings.asset_version
+    return templates
 
 
 def _check_admin(current_user: Usuario | None) -> Usuario | RedirectResponse:

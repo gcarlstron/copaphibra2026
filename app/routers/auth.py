@@ -16,7 +16,9 @@ router = APIRouter()
 
 def _templates() -> Jinja2Templates:
     settings = get_settings()
-    return Jinja2Templates(directory=str(settings.templates_dir))
+    templates = Jinja2Templates(directory=str(settings.templates_dir))
+    templates.env.globals["asset_version"] = settings.asset_version
+    return templates
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Usuario | None:
