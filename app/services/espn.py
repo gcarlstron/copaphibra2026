@@ -24,6 +24,7 @@ Tratamento de erro em `buscar_scoreboard`:
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import date, timedelta
 
@@ -201,20 +202,40 @@ def buscar_scoreboard(
 def buscar_scoreboard_com_janela(
     data: date,
     timeout_s: float | None = None,
+    deadline: float | None = None,
     _transport: httpx.BaseTransport | None = None,
 ) -> list[EventoEspn]:
     """Busca D-1, D e D+1 e retorna a união de todos os eventos encontrados.
 
     Estratégia de robustez contra diferença de fuso horário entre o banco e a ESPN.
     Erros em uma das datas são logados e ignorados (retorna o que conseguiu).
+
+    `deadline` (opcional, em segundos de `time.monotonic()`): orçamento total para
+    o conjunto das 3 buscas. Usado no caminho síncrono do dashboard para não travar
+    a página se a ESPN estiver lenta. Ao estourar, retorna o que já conseguiu e o
+    timeout de cada requisição é reduzido ao tempo restante.
     """
+    if timeout_s is None:
+        timeout_s = get_settings().espn_timeout_s
+
     todos: list[EventoEspn] = []
     vistos: set[tuple[str, str]] = set()  # dedup por (abrev_casa, abrev_visitante)
 
     for delta in (-1, 0, 1):
+        timeout_atual = timeout_s
+        if deadline is not None:
+            restante = deadline - time.monotonic()
+            if restante <= 0:
+                logger.warning(
+                    "Deadline do sync atingido; pulando datas restantes da janela de %s.",
+                    data,
+                )
+                break
+            timeout_atual = min(timeout_s, restante)
+
         d = data + timedelta(days=delta)
         try:
-            eventos = buscar_scoreboard(d, timeout_s=timeout_s, _transport=_transport)
+            eventos = buscar_scoreboard(d, timeout_s=timeout_atual, _transport=_transport)
         except EspnClientError as exc:
             logger.warning("ESPN falhou para %s: %s", d, exc)
             continue

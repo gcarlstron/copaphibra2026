@@ -165,11 +165,14 @@ QA auditou (caminho crítico do login): veredito PRONTA, 2 importantes corrigido
 - [ ] Push do código (dispara deploy no Render) — o sync passa a rodar no login em produção
 - [ ] (Opcional, decidir) backfill imediato: rodar o sync uma vez na Neon, ou deixar o 1º login preencher
 
-### 10g — UI (opcional, fora do MVP)
-- [ ] (Opcional) Indicador "última atualização de resultados" no dashboard, lendo `sync_state.ultima_execucao` → @frontend
+### 10g — UI (concluída — 2026-06-22)
+- [x] ✅ Indicador "Resultados atualizados há X min" no dashboard, lendo `sync_state.ultima_execucao`. `montar_dashboard` expõe `ultima_sync` + `ultima_sync_texto` (helper puro `_descrever_ultima_sync`: agora/min/h/d, normaliza naive→UTC, futuro→"agora mesmo"); badge discreto (ponto verde) no cabeçalho da classificação (`dashboard.html` + `.sync-status` no `app.css`); 4 testes novos em `test_dashboard.py` → @backend + @frontend — 2026-06-22
 
 ### Ajuste (2026-06-19): gatilho do sync movido para o dashboard
 - [x] ✅ O sync ESPN passa a ser disparado ao carregar o dashboard (`GET /`), não mais no `POST /login` — cobre quem mantém a sessão aberta e só recarrega a home. Mesmo padrão (BackgroundTask + `SessionLocal` + throttle persistido); só para usuário autenticado. `BackgroundTasks` removido de `routers/auth.py`; `routers/dashboard.py` ganha o disparo. Testes movidos `test_login_sync.py` → `test_dashboard_sync.py` (dispara/falha-isolada/anônimo-não-dispara/sessão-própria/login-não-dispara-mais + throttle). **183 testes** → @backend — 2026-06-19
+
+### Ajuste (2026-06-22): sync ESPN passa a ser SÍNCRONO no dashboard
+- [x] ✅ Antes o sync rodava como `BackgroundTask` (depois da resposta), então a 1ª carga mostrava dados antigos e só após F5 apareciam os novos. Agora o `GET /` chama `sincronizar_se_necessario(db, agora, deadline=...)` de forma **síncrona, ANTES** de `montar_dashboard`, na própria sessão do request — a classificação/jogos já saem atualizados na 1ª carga. Fallback preservado: `try/except` no router + erros da ESPN engolidos → renderiza com os dados do banco se a API não responder. `deadline` (`ESPN_SYNC_DEADLINE_S=8`) limita o tempo de espera (relógio monotônico) propagado a `buscar_scoreboard_com_janela`/`sincronizar_resultados`; throttle de 15 min mantido (só o 1º acesso da janela paga o fetch). `disparar_sync_se_necessario` mantido como wrapper de background/standalone (abre sessão própria + isola erro). `test_dashboard_sync.py` atualizado (chamada síncrona/falha-isolada/anônimo/recebe-sessão+deadline/login-não-dispara + throttle). **183 testes** → @backend — 2026-06-22
 
 ---
 
@@ -231,6 +234,26 @@ sozinha. Sem migração (`status` String(20) comporta os valores novos). **198 t
 - [ ] Push do código → dispara deploy no Render
 
 ---
+
+## Fase 13 — Verificação de privacidade dos palpites (preparada — 2026-06-22)
+
+Regra inviolável #4: enquanto a rodada está **aberta** para palpite, um jogador **não vê o
+palpite dos outros**; só depois que a rodada **fecha** todos veem os de todos. Isto **já está
+implementado e testado** (Fases 6b e 11) — esta fase é uma **verificação/endurecimento** para
+garantir que não há vazamento em nenhuma superfície e documentar a regra operacional.
+
+Onde a regra vive hoje:
+- `services/prazo.py::palpites_de_terceiros_visiveis` — fonte única da decisão (fechada = visível).
+- `services/jogos.py::detalhe_do_jogo` — só carrega palpites de terceiros se `terceiros_visiveis`.
+- `services/jogos.py::listar_todos_os_jogos` — nunca carrega pontos de terceiros (só `meus_pontos`).
+- Testes: `test_prazo.py`, `test_jogos.py` (aberta→só próprio / fechada→todos / inativos / rotas),
+  `test_jogos_lista.py` (não vaza pontos de terceiros).
+
+A verificar / decidir:
+- [ ] Confirmar (QA) que nenhuma outra superfície expõe palpite/pontos de terceiros com rodada aberta — varrer routers/templates (`palpites`, `jogo_detalhe`, `jogos_lista`, dashboard) e endpoints HTMX.
+- [ ] **Nuance da classificação:** o dashboard soma `Palpite.pontos`, que só ficam != 0 após um jogo ser **encerrado**. Como lançar resultado encerra o jogo mas **não** a rodada (D3), uma rodada ainda `aberta` com um jogo já encerrado faria o total aparecer no ranking (não revela o palpite em si, mas adianta pontos). Regra operacional: **fechar a rodada (ou definir `fechamento`) antes do 1º apito** — então quando houver resultado a rodada já estará fechada. Confirmar/documentar.
+- [ ] **Decisão:** admin também fica sujeito à privacidade (hoje `detalhe_do_jogo` não dá bypass para `is_admin`). Manter assim ou permitir que o admin veja os palpites com a rodada aberta? (recomendo manter — ninguém espia.)
+- [ ] (Opcional) Teste de regressão consolidado cruzando as superfícies numa única rodada aberta→fechada, como rede de segurança contra regressões futuras.
 
 ## Backlog / Fase 2 (futuro)
 

@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Jogo, Palpite, Rodada, Usuario
+from app.models.sync_state import SyncState
 from app.services.prazo import rodada_aberta_para_edicao
 from app.services.ranking import chave_de_ranking, contar_buckets_de_pontos
 
@@ -58,6 +59,10 @@ class DashboardData:
     jogos_recentes: list[JogoResumoView]
     proximos_jogos: list[JogoResumoView]
     rodadas_abertas: list[RodadaAbertaView]
+    # Última sincronização de resultados com a ESPN (None se nunca rodou).
+    ultima_sync: datetime | None = None
+    # Texto relativo amigável da última sync (ex.: "há 3 min"); None se nunca rodou.
+    ultima_sync_texto: str | None = None
 
 
 def _montar_classificacao(db: Session) -> list[ItemClassificacao]:
@@ -247,13 +252,56 @@ def _montar_rodadas_abertas(db: Session, agora: datetime) -> list[RodadaAbertaVi
     return abertas
 
 
+def _obter_ultima_sync(db: Session) -> datetime | None:
+    """Lê o timestamp da última sincronização de resultados ESPN (SyncState)."""
+    # Import adiado: evita ciclo (sync_resultados importa STATUS_ENCERRADO daqui).
+    from app.services.sync_resultados import CHAVE_SYNC
+
+    return db.scalar(
+        select(SyncState.ultima_execucao).where(SyncState.chave == CHAVE_SYNC)
+    )
+
+
+def _descrever_ultima_sync(quando: datetime | None, agora: datetime) -> str | None:
+    """Descreve, de forma relativa e amigável, quando foi a última sincronização.
+
+    Ex.: "agora mesmo", "há 3 min", "há 2 h", "há 5 d". Retorna None se nunca rodou.
+    Normaliza valores naive para UTC (o SQLite devolve datetimes sem tzinfo).
+    """
+    if quando is None:
+        return None
+
+    q = quando if quando.tzinfo is not None else quando.replace(tzinfo=timezone.utc)
+    a = agora if agora.tzinfo is not None else agora.replace(tzinfo=timezone.utc)
+
+    segundos = (a - q).total_seconds()
+    if segundos < 0:
+        segundos = 0
+    if segundos < 60:
+        return "agora mesmo"
+
+    minutos = int(segundos // 60)
+    if minutos < 60:
+        return f"há {minutos} min"
+
+    horas = minutos // 60
+    if horas < 24:
+        return f"há {horas} h"
+
+    dias = horas // 24
+    return f"há {dias} d"
+
+
 def montar_dashboard(db: Session, agora: datetime | None = None) -> DashboardData:
     """Agrega todos os dados necessários para a tela de dashboard/classificação."""
     momento_atual = agora or datetime.now(timezone.utc)
+    ultima_sync = _obter_ultima_sync(db)
     return DashboardData(
         classificacao=_montar_classificacao(db),
         jogos_ao_vivo=_montar_jogos_ao_vivo(db),
         jogos_recentes=_montar_jogos_recentes(db),
         proximos_jogos=_montar_proximos_jogos(db),
         rodadas_abertas=_montar_rodadas_abertas(db, momento_atual),
+        ultima_sync=ultima_sync,
+        ultima_sync_texto=_descrever_ultima_sync(ultima_sync, momento_atual),
     )

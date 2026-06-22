@@ -74,6 +74,12 @@
                 <h3>Classificação geral</h3>
                 <p class="muted">Posições, pontos e critérios de desempate</p>
             </div>
+            {% if dados.ultima_sync_texto %}
+            <p class="sync-status muted" title="Resultados buscados automaticamente na ESPN ao abrir o dashboard">
+                <span class="sync-status-dot" aria-hidden="true"></span>
+                Resultados atualizados {{ dados.ultima_sync_texto }}
+            </p>
+            {% endif %}
         </header>
 
         {% if dados.classificacao %}

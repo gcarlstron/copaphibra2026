@@ -56,9 +56,15 @@ python scripts/seed_team_alias.py       # popula o de-para de times (48) p/ o sy
 ```
 (O app normaliza o `DATABASE_URL`, então a string crua da Neon funciona nos scripts também.)
 
-> **Resultados automáticos (ESPN):** a partir da Fase 10, ao logar o app busca em background
-> os resultados que faltam (sem bloquear o login). Exige o `team_alias` semeado (`seed_team_alias.py`).
-> Opcional: ajustar `ESPN_SYNC_INTERVALO_MIN` (throttle, default 15) e `ESPN_TIMEOUT_S` (default 5).
+> **Resultados automáticos (ESPN):** a partir da Fase 10, ao abrir o dashboard (`GET /`) o app
+> busca de forma **síncrona** os resultados que faltam **antes de renderizar** — assim a
+> classificação já sai atualizada na 1ª carga, sem F5. Se a ESPN não responder dentro do
+> orçamento de tempo, a página renderiza com os dados que já estão no banco (fallback). Exige
+> o `team_alias` semeado (`seed_team_alias.py`).
+> Opcional: ajustar `ESPN_SYNC_INTERVALO_MIN` (throttle, default 15), `ESPN_TIMEOUT_S`
+> (timeout por requisição, default 5) e `ESPN_SYNC_DEADLINE_S` (orçamento total de espera
+> do dashboard, default 8). Backfill inicial é automático: o 1º acesso ao dashboard em
+> produção dispara o sync e preenche os resultados já ocorridos.
 > Se um dia recriar o banco do zero, rode o `seed_team_alias.py` de novo.
 
 ### A5. Finalizar

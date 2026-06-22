@@ -475,3 +475,52 @@ def test_get_dashboard_ok_com_login(client: TestClient, db_session: Session) -> 
     assert response.status_code == 200
     # Garante que a página renderizou com algo da classificação.
     assert "Classificação" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Testes: indicador de última sincronização (Fase 10g)
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_inclui_ultima_sync(db_session: Session) -> None:
+    """montar_dashboard expõe a última sincronização e seu texto relativo."""
+    from app.models.sync_state import SyncState
+    from app.services.sync_resultados import CHAVE_SYNC
+
+    db_session.add(
+        SyncState(chave=CHAVE_SYNC, ultima_execucao=_AGORA - timedelta(minutes=3))
+    )
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+    assert dados.ultima_sync is not None
+    assert dados.ultima_sync_texto == "há 3 min"
+
+
+def test_dashboard_sem_sync_state(db_session: Session) -> None:
+    """Sem nenhuma sincronização registrada, os campos vêm None."""
+    dados = montar_dashboard(db_session, _AGORA)
+    assert dados.ultima_sync is None
+    assert dados.ultima_sync_texto is None
+
+
+def test_descrever_ultima_sync_faixas() -> None:
+    """O texto relativo cobre as faixas: agora / min / h / d / None."""
+    from app.services.dashboard import _descrever_ultima_sync
+
+    a = _AGORA
+    assert _descrever_ultima_sync(None, a) is None
+    assert _descrever_ultima_sync(a - timedelta(seconds=10), a) == "agora mesmo"
+    assert _descrever_ultima_sync(a - timedelta(minutes=5), a) == "há 5 min"
+    assert _descrever_ultima_sync(a - timedelta(hours=2), a) == "há 2 h"
+    assert _descrever_ultima_sync(a - timedelta(days=3), a) == "há 3 d"
+    # data futura (relógios fora de sincronia) não quebra → "agora mesmo"
+    assert _descrever_ultima_sync(a + timedelta(minutes=1), a) == "agora mesmo"
+
+
+def test_descrever_ultima_sync_normaliza_naive() -> None:
+    """Valor naive (como o SQLite devolve) é normalizado para UTC sem quebrar."""
+    from app.services.dashboard import _descrever_ultima_sync
+
+    naive = (_AGORA - timedelta(minutes=10)).replace(tzinfo=None)
+    assert _descrever_ultima_sync(naive, _AGORA) == "há 10 min"

@@ -240,6 +240,26 @@ body::before {
     align-items: center;
     gap: 16px;
     margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+/* Indicador "Resultados atualizados há X min" (sync ESPN) */
+.sync-status {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.sync-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.18);
 }
 
 .match-list {
