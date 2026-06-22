@@ -478,6 +478,61 @@ def test_get_dashboard_ok_com_login(client: TestClient, db_session: Session) -> 
 
 
 # ---------------------------------------------------------------------------
+# Testes: privacidade do ranking — pontos de rodada aberta não contam (Fase 13)
+# ---------------------------------------------------------------------------
+
+
+def test_classificacao_ignora_pontos_de_rodada_aberta(db_session: Session) -> None:
+    """Jogo encerrado dentro de uma rodada AINDA ABERTA não soma pontos no ranking.
+
+    Protege a Regra #4: sem isso, o bucket/total revelariam que o jogador pontuou
+    antes de a rodada fechar.
+    """
+    user = _seed_usuario(db_session, "Bernardo", "bernardo")
+    rodada = _seed_rodada(db_session, nome="2ª Rodada", ordem=2, aberta=True)
+    jogo = _seed_jogo(
+        db_session,
+        rodada,
+        "BRA",
+        "ARG",
+        _AGORA - timedelta(hours=1),
+        status=STATUS_ENCERRADO,
+        gols_casa=1,
+        gols_visitante=0,
+    )
+    _seed_palpite(db_session, user, jogo, pontos=9)
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+    bernardo = next(i for i in dados.classificacao if i.nome == "Bernardo")
+    assert bernardo.total == 0
+    assert bernardo.qtd_9 == 0
+
+
+def test_classificacao_conta_pontos_apos_rodada_fechar(db_session: Session) -> None:
+    """Os mesmos pontos passam a contar quando a rodada está fechada para edição."""
+    user = _seed_usuario(db_session, "Bernardo", "bernardo")
+    rodada = _seed_rodada(db_session, nome="2ª Rodada", ordem=2, aberta=False)
+    jogo = _seed_jogo(
+        db_session,
+        rodada,
+        "BRA",
+        "ARG",
+        _AGORA - timedelta(hours=1),
+        status=STATUS_ENCERRADO,
+        gols_casa=1,
+        gols_visitante=0,
+    )
+    _seed_palpite(db_session, user, jogo, pontos=9)
+    db_session.commit()
+
+    dados = montar_dashboard(db_session, _AGORA)
+    bernardo = next(i for i in dados.classificacao if i.nome == "Bernardo")
+    assert bernardo.total == 9
+    assert bernardo.qtd_9 == 1
+
+
+# ---------------------------------------------------------------------------
 # Testes: indicador de última sincronização (Fase 10g)
 # ---------------------------------------------------------------------------
 

@@ -23,3 +23,31 @@ def test_palpites_terceiros_so_apos_fechamento() -> None:
     fechamento = agora - timedelta(minutes=1)
 
     assert palpites_de_terceiros_visiveis(True, abertura, fechamento, agora) is True
+
+
+def test_rodada_importada_fechada_sem_janela_libera_terceiros() -> None:
+    """Rodada importada (aberta=False, sem janela) já libera os palpites de todos."""
+    agora = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+
+    assert rodada_aberta_para_edicao(False, None, None, agora) is False
+    assert palpites_de_terceiros_visiveis(False, None, None, agora) is True
+
+
+def test_rodada_agendada_abertura_futura_oculta_terceiros() -> None:
+    """Pré-abertura (abertura no futuro): não edita ainda e terceiros seguem ocultos."""
+    agora = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+    abertura = agora + timedelta(hours=2)
+    fechamento = agora + timedelta(hours=4)
+
+    assert rodada_aberta_para_edicao(True, abertura, fechamento, agora) is False
+    assert palpites_de_terceiros_visiveis(True, abertura, fechamento, agora) is False
+
+
+def test_rodada_aberta_fechamento_futuro_oculta_terceiros() -> None:
+    """Janela ainda aberta (fechamento no futuro): terceiros ocultos."""
+    agora = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+    abertura = agora - timedelta(hours=1)
+    fechamento = agora + timedelta(hours=2)
+
+    assert rodada_aberta_para_edicao(True, abertura, fechamento, agora) is True
+    assert palpites_de_terceiros_visiveis(True, abertura, fechamento, agora) is False

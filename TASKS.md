@@ -235,25 +235,17 @@ sozinha. Sem migração (`status` String(20) comporta os valores novos). **198 t
 
 ---
 
-## Fase 13 — Verificação de privacidade dos palpites (preparada — 2026-06-22)
+## Fase 13 — Privacidade dos palpites: verificação + endurecimento (concluída — 2026-06-22)
 
 Regra inviolável #4: enquanto a rodada está **aberta** para palpite, um jogador **não vê o
-palpite dos outros**; só depois que a rodada **fecha** todos veem os de todos. Isto **já está
-implementado e testado** (Fases 6b e 11) — esta fase é uma **verificação/endurecimento** para
-garantir que não há vazamento em nenhuma superfície e documentar a regra operacional.
+palpite dos outros**; só depois que a rodada **fecha** todos veem os de todos.
 
-Onde a regra vive hoje:
-- `services/prazo.py::palpites_de_terceiros_visiveis` — fonte única da decisão (fechada = visível).
-- `services/jogos.py::detalhe_do_jogo` — só carrega palpites de terceiros se `terceiros_visiveis`.
-- `services/jogos.py::listar_todos_os_jogos` — nunca carrega pontos de terceiros (só `meus_pontos`).
-- Testes: `test_prazo.py`, `test_jogos.py` (aberta→só próprio / fechada→todos / inativos / rotas),
-  `test_jogos_lista.py` (não vaza pontos de terceiros).
+- [x] ✅ **Auditoria de QA (read-only) — veredito PRIVACIDADE OK:** nenhum caminho expõe o **placar palpitado** de terceiros com a rodada aberta. A gating é feita escolhendo *qual query roda* no service (o dado sensível nem sai do banco), em todas as superfícies: `detalhe_do_jogo` (via `palpites_de_terceiros_visiveis`), `listar_todos_os_jogos`/`listar_palpites_do_usuario` (query amarrada a `usuario_id`), dashboard (só agrega `pontos`, nunca o placar), admin (sem bypass — admin também não vê), HTMX (só `204 + redirect`). Bordas de `palpites_de_terceiros_visiveis` validadas (agendada/sem janela/fechamento passado-futuro/naive). **Decisão confirmada:** admin segue sujeito à privacidade (sem bypass) → @qa — 2026-06-22
+- [x] ✅ **Endurecimento do Risco #1 (pontos no ranking):** `_montar_classificacao` agora só soma `Palpite.pontos` de jogos cuja rodada **não** está aberta para edição (`_rodadas_abertas_para_edicao_ids` + JOIN em `Jogo`). Fecha a brecha de um jogo encerrado dentro de uma rodada ainda aberta (lançar resultado não fecha a rodada — D3) revelar via bucket/total que o jogador pontuou antes de a rodada fechar. No fluxo normal é no-op (palpite de rodada aberta vale 0). Testes: `test_dashboard.py` (rodada aberta→0 pts / fechada→conta) + 3 bordas em `test_prazo.py`. **192 testes** → @backend — 2026-06-22
 
-A verificar / decidir:
-- [ ] Confirmar (QA) que nenhuma outra superfície expõe palpite/pontos de terceiros com rodada aberta — varrer routers/templates (`palpites`, `jogo_detalhe`, `jogos_lista`, dashboard) e endpoints HTMX.
-- [ ] **Nuance da classificação:** o dashboard soma `Palpite.pontos`, que só ficam != 0 após um jogo ser **encerrado**. Como lançar resultado encerra o jogo mas **não** a rodada (D3), uma rodada ainda `aberta` com um jogo já encerrado faria o total aparecer no ranking (não revela o palpite em si, mas adianta pontos). Regra operacional: **fechar a rodada (ou definir `fechamento`) antes do 1º apito** — então quando houver resultado a rodada já estará fechada. Confirmar/documentar.
-- [ ] **Decisão:** admin também fica sujeito à privacidade (hoje `detalhe_do_jogo` não dá bypass para `is_admin`). Manter assim ou permitir que o admin veja os palpites com a rodada aberta? (recomendo manter — ninguém espia.)
-- [ ] (Opcional) Teste de regressão consolidado cruzando as superfícies numa única rodada aberta→fechada, como rede de segurança contra regressões futuras.
+_Follow-ups menores do QA (não bloqueantes):_
+- _`services/jogos.py` ramo do "próprio palpite" não filtra `Usuario.ativo` (inofensivo — usuário sempre vê o próprio)._
+- _`services/palpites.py` calcula `terceiros_visiveis` mas o template `palpites.html` não usa (campo morto; remover ou documentar)._
 
 ## Backlog / Fase 2 (futuro)
 

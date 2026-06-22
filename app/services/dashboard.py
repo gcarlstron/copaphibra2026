@@ -65,8 +65,26 @@ class DashboardData:
     ultima_sync_texto: str | None = None
 
 
-def _montar_classificacao(db: Session) -> list[ItemClassificacao]:
-    """Agrega pontos de cada usuário ativo e ordena pelo critério de desempate."""
+def _rodadas_abertas_para_edicao_ids(db: Session, agora: datetime) -> set[int]:
+    """IDs das rodadas abertas para edição AGORA (palpites ainda em sigilo)."""
+    stmt = select(Rodada.id, Rodada.aberta, Rodada.abertura, Rodada.fechamento)
+    return {
+        r.id
+        for r in db.execute(stmt).all()
+        if rodada_aberta_para_edicao(r.aberta, r.abertura, r.fechamento, agora)
+    }
+
+
+def _montar_classificacao(db: Session, agora: datetime) -> list[ItemClassificacao]:
+    """Agrega pontos de cada usuário ativo e ordena pelo critério de desempate.
+
+    Privacidade (Regra #4): pontos de jogos cuja rodada ainda está ABERTA para
+    edição não entram na soma. Caso contrário, um jogo encerrado dentro de uma
+    rodada ainda aberta (lançar resultado encerra o jogo mas não a rodada —
+    decisão D3) faria o total/buckets revelarem que o jogador pontuou antes de a
+    rodada fechar. No fluxo normal isto é um no-op: palpites de rodada aberta
+    valem 0 (sem resultado lançado) e não afetam total nem buckets.
+    """
     # Busca todos os usuários ativos com seleção explícita de colunas.
     stmt_usuarios = select(Usuario.id, Usuario.nome).where(Usuario.ativo == True)  # noqa: E712
     usuarios = db.execute(stmt_usuarios).all()
@@ -75,19 +93,23 @@ def _montar_classificacao(db: Session) -> list[ItemClassificacao]:
         return []
 
     usuario_ids = [u.id for u in usuarios]
+    rodadas_abertas = _rodadas_abertas_para_edicao_ids(db, agora)
 
-    # Busca todos os palpites com pontos dos usuários ativos.
-    # Palpites com pontos == 0 e sem resultado lançado também são incluídos
-    # (pontos = 0 é o default; só conta o que foi lançado).
-    stmt_palpites = select(Palpite.usuario_id, Palpite.pontos).where(
-        Palpite.usuario_id.in_(usuario_ids)
+    # Busca os palpites dos usuários ativos junto com a rodada do jogo, para
+    # excluir os de rodadas ainda abertas para edição (ver docstring).
+    stmt_palpites = (
+        select(Palpite.usuario_id, Palpite.pontos, Jogo.rodada_id)
+        .join(Jogo, Palpite.jogo_id == Jogo.id)
+        .where(Palpite.usuario_id.in_(usuario_ids))
     )
     palpite_rows = db.execute(stmt_palpites).all()
 
-    # Agrupa pontos por usuário.
+    # Agrupa pontos por usuário, ignorando rodadas ainda abertas para edição.
     pontos_por_usuario: dict[int, list[int]] = {u.id: [] for u in usuarios}
-    for usuario_id, pontos in palpite_rows:
-        pontos_por_usuario[usuario_id].append(pontos)
+    for row in palpite_rows:
+        if row.rodada_id in rodadas_abertas:
+            continue
+        pontos_por_usuario[row.usuario_id].append(row.pontos)
 
     # Monta as entradas sem posição ainda, para poder ordenar depois.
     @dataclass(slots=True)
@@ -297,7 +319,7 @@ def montar_dashboard(db: Session, agora: datetime | None = None) -> DashboardDat
     momento_atual = agora or datetime.now(timezone.utc)
     ultima_sync = _obter_ultima_sync(db)
     return DashboardData(
-        classificacao=_montar_classificacao(db),
+        classificacao=_montar_classificacao(db, momento_atual),
         jogos_ao_vivo=_montar_jogos_ao_vivo(db),
         jogos_recentes=_montar_jogos_recentes(db),
         proximos_jogos=_montar_proximos_jogos(db),
