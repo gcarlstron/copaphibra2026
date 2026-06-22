@@ -228,7 +228,13 @@ def _get_or_create_usuario(
     nome: str,
     senha: str,
 ) -> tuple[Usuario, bool]:
-    """Retorna (usuario, criado). Atualiza nome e senha se já existir."""
+    """Retorna (usuario, criado).
+
+    Usuário NOVO: cria com a senha provisória.
+    Usuário EXISTENTE: atualiza nome e reativa, mas **NUNCA** reescreve
+    `senha_hash` — preserva a senha que o jogador já trocou (idempotência de
+    credencial) — nem toca em `is_admin`.
+    """
     stmt = select(Usuario).where(Usuario.username == username)
     usuario = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
     if usuario is None:
@@ -241,9 +247,9 @@ def _get_or_create_usuario(
         )
         db.add(usuario)  # type: ignore[union-attr]
         return usuario, True
-    # Atualiza nome e senha, mas nunca toca is_admin
+    # Já existe: atualiza nome e reativa, mas NUNCA reescreve senha_hash
+    # (preserva a senha que o jogador já trocou) nem toca em is_admin.
     usuario.nome = nome
-    usuario.senha_hash = hash_senha(senha)
     usuario.ativo = True
     return usuario, False
 
