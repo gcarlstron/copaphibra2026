@@ -247,6 +247,28 @@ _Follow-ups menores do QA (não bloqueantes):_
 - _`services/jogos.py` ramo do "próprio palpite" não filtra `Usuario.ativo` (inofensivo — usuário sempre vê o próprio)._
 - _`services/palpites.py` calcula `terceiros_visiveis` mas o template `palpites.html` não usa (campo morto; remover ou documentar)._
 
+## Fase 14 — Melhorias de UX dos painéis (preparada — 2026-06-22)
+
+Frontend puro (sem backend). Duas melhorias na experiência das telas do jogador.
+
+### 14a — Painéis recolhíveis ("minimizar" para uma linha)
+Todo painel `round-card` pode ser **recolhido** para mostrar só o cabeçalho (uma linha),
+para a pessoa esconder o que não quer ver no momento. Vale para todos os cards que hoje
+usam o mesmo padrão `<article class="round-card"><header class="round-head">…`:
+- **Dashboard** (`dashboard.html`): Classificação geral, Últimos resultados, Próximos jogos.
+- **Todos os jogos** (`jogos_lista.html`): um card por rodada (1ª, 2ª, 3ª…).
+- **Meus palpites** (`palpites.html`): um card por rodada.
+- (Fora do escopo por ora: cards do `admin/`.)
+
+Abordagem (parametrizada por **classe**, decidida com o usuário 2026-06-22):
+- [ ] Recolhibilidade é **opt-in por classe**: `round-card--collapsible`. Um painel só recolhe se tiver a classe — para desativar, basta não pô-la (hoje vai em todos os 5). Mantém a casca `<article class="round-card">` intacta (sem converter para `<details>`), só acrescenta a classe + `data-panel-id` estável.
+- [ ] `static/js/ui.js` (incluído no `base.html`) varre `.round-card--collapsible`, injeta um chevron no `.round-head`, torna o cabeçalho clicável (com `role=button`/`tabindex`/`aria-expanded` e teclado Enter/Espaço), e alterna a classe `is-collapsed` no card. Ignora cliques em `a/button/input/form/label` dentro do header.
+- [ ] CSS: `.round-card.is-collapsed > :not(.round-head) { display:none }` (vira uma linha); chevron posicionado de forma absoluta (não desarruma o elemento à direita do header) e girando no estado recolhido.
+- [ ] **Persistir** por painel em `localStorage` (`data-panel-id`, ex.: `dashboard:classificacao`) — senão todo reload (o dashboard recarrega ao sincronizar) reabre tudo. Fallback sem JS: painel aberto (comportamento atual).
+
+### 14b — "Próximos jogos" clicável (vai pro detalhe do jogo)
+- [ ] No `dashboard.html`, a seção **Próximos jogos** usa `<div class="upcoming-row">` (não clicável). Trocar por `<a href="/jogos/{{ jogo.jogo_id }}">` como já é em "Últimos resultados" (`result-row`), ajustando o CSS (`.upcoming-row` → estado clicável/hover). O `jogo_id` já vem no `JogoResumoView`, então é só template + CSS.
+
 ## Backlog / Fase 2 (futuro)
 
 - [ ] Notificação de "falta palpitar" antes do fechamento da rodada
