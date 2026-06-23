@@ -134,3 +134,35 @@ def test_jogo_agendado_ainda_recebe_resultado(db: Session) -> None:
     db.commit()
     assert (criado2, protegido2) == (False, False)
     assert (jogo2.gols_casa, jogo2.gols_visitante, jogo2.status) == (3, 0, STATUS_ENCERRADO)
+
+
+def test_jogo_unique_constraint_rodada_times(db: Session) -> None:
+    """Banco rejeita dois jogos com a mesma (rodada_id, time_casa, time_visitante)."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import Jogo
+
+    rodada = _seed_rodada(db, ordem=3)
+    db.add(
+        Jogo(
+            rodada_id=rodada.id,
+            data_hora=datetime(2026, 6, 13, 16, 0, tzinfo=timezone.utc),
+            time_casa="BRA",
+            time_visitante="ARG",
+            status=STATUS_AGENDADO,
+        )
+    )
+    db.commit()
+
+    db.add(
+        Jogo(
+            rodada_id=rodada.id,
+            data_hora=datetime(2026, 6, 13, 18, 0, tzinfo=timezone.utc),
+            time_casa="BRA",
+            time_visitante="ARG",
+            status=STATUS_AGENDADO,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db.commit()
+    db.rollback()
