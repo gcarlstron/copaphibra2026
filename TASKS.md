@@ -329,6 +329,11 @@ Os itens abaixo eram ajustes/dívida — **todos resolvidos** (ALTA, MÉDIA, BAI
 
 ## Backlog / Fase 2 (futuro)
 
+- [ ] **Mata-mata — ingestão automática dos jogos via ESPN** _(pesquisa feita 2026-06-23; quebrar em fases/tarefas depois)_
+  - _**Decidido:** o sync (gatilho do dashboard) passa a **criar** os jogos agendados do mata-mata; admin corrige manualmente; **pontuação inalterada** (resultado da ESPN, ignorando pênaltis — a confirmar se também descarta gols da prorrogação)._
+  - _**Endpoint (testado ao vivo):** usar o `/scoreboard?dates=` que o app já consome — **não** o `/events` (este não traz fase/rodada). Aceita range `dates=YYYYMMDD-YYYYMMDD` (R32 inteiro numa chamada). Fase por jogo em **`event.season.slug`**: `group-stage`, `round-of-32`, `round-of-16`, `quarterfinals`, `semifinals`, `3rd-place`, `final`. O `leagues[0].calendar` dá o mapa fase→datas (R32 28/jun–3/jul · Oitavas 4–7/jul · Quartas 9–11/jul · Semis 14–15/jul · 3º 18/jul · Final 19/jul)._
+  - _**Regra-chave:** o KO já aparece agendado com **placeholders** (`2B`, `RD16 W4`, `3RD`) até os times definirem; só criar/atualizar o Jogo quando os **dois times forem reais** (resolvíveis no `team_alias`)._
+  - _**Desenho:** `parse_eventos` extrai `season.slug` (campo novo em `EventoEspn`); mapa slug→`Rodada`; criação de agendados no sync (janela à frente via calendar/range). Sem endpoint novo. A definir na quebra: modelo das rodadas (admin cria × sync cria) e o prazo de cada uma._
 - [ ] **Exportar dados para Excel (.xlsx)** — resultado geral (classificação), jogos e palpites.
   _A definir: gerar via rota admin (download) ou via script; uma aba por seção (Classificação / Jogos / Palpites); reusar `openpyxl` (já no `requirements.txt`). Hoje existe o `scripts/relatorio.py` (read-only, só console) como base da leitura desses mesmos dados — pensar melhor no formato/entrega depois._
 - [ ] **Painéis de BI do Grafana** — desempenho por jogador e geral. Datasource: o Grafana lê o **mesmo Postgres (Neon)** via **role read-only** dedicado (não a credencial da app). Roadmap em 3 passos:
