@@ -58,9 +58,9 @@
         <header class="round-head">
             <h3>Resultado — {{ resultado.arquivo }}</h3>
             {% if resultado.todos_ok %}
-            <span class="status-pill">✓ totais conferem</span>
+            <span class="status-pill">✓ sem divergências</span>
             {% else %}
-            <span class="status-pill" style="background:#fee2e2;color:#991b1b;">⚠ totais divergem</span>
+            <span class="status-pill" style="background:#fee2e2;color:#991b1b;">⚠ {{ resultado.divergencias | length }} divergência(s)</span>
             {% endif %}
         </header>
 
@@ -74,16 +74,15 @@
             </tbody>
         </table>
 
-        <h3>Validação de pontos (R1+R2)</h3>
+        <h3>Totais atuais (jogos encerrados)</h3>
+        <p class="muted">Informativo — pontos por jogador no banco. Não é comparado com um alvo fixo (os resultados entram ao vivo).</p>
         <table class="regras-tabela">
-            <thead><tr><th>Jogador</th><th>Calculado</th><th>Esperado</th><th>Status</th></tr></thead>
+            <thead><tr><th>Jogador</th><th>Pontos</th></tr></thead>
             <tbody>
-                {% for v in resultado.validacao %}
+                {% for nome, total in resultado.totais %}
                 <tr>
-                    <td style="width:auto;color:var(--text);">{{ v.nome }}</td>
-                    <td>{{ v.calculado }}</td>
-                    <td>{{ v.esperado if v.esperado is not none else '—' }}</td>
-                    <td>{{ 'OK' if v.ok else 'DIVERGE' }}</td>
+                    <td style="width:auto;color:var(--text);">{{ nome }}</td>
+                    <td>{{ total }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

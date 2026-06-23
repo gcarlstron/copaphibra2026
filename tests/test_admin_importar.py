@@ -18,7 +18,7 @@ from app.database import Base, get_db
 from app.main import create_app
 from app.models import Usuario
 from app.services.auth import hash_senha
-from scripts.importar_planilha import LinhaValidacao, ResultadoImportacao
+from scripts.importar_planilha import ResultadoImportacao
 
 
 @pytest.fixture()
@@ -83,7 +83,7 @@ def _resultado_fake() -> ResultadoImportacao:
         palpites_criados=240,
         palpites_atualizados=40,
         divergencias=[],
-        validacao=[LinhaValidacao("Gustavo", 101, 101, True)],
+        totais=[("Gustavo", 101)],
         todos_ok=True,
     )
 
@@ -123,8 +123,8 @@ def test_post_ok_renderiza_resultado(client: TestClient, db_session: Session) ->
         resp = client.post("/admin/importar", data={"arquivo": "teste.xlsx"})
     assert resp.status_code == 200
     assert "240 criados" in resp.text  # palpites
-    assert "Gustavo" in resp.text  # linha de validação
-    assert "conferem" in resp.text  # todos_ok
+    assert "Gustavo" in resp.text  # linha de totais
+    assert "sem divergências" in resp.text  # todos_ok
 
 
 def test_post_erro_mostra_banner(client: TestClient, db_session: Session) -> None:

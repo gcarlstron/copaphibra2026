@@ -83,24 +83,6 @@ RODADAS: list[tuple[int, str, int, int]] = [
     (3, "3ª Rodada", 50, 73),
 ]
 
-# Totais esperados (R1+R2) para a validação final. Atualizados em 2026-06-23 a
-# partir da col O da planilha da 3ª fase (e conferem com a classificação atual do
-# banco). A R3 ainda não tem resultado, então não soma pontos aqui.
-# Obs.: este snapshot precisa ser reajustado quando a R3 começar a ter resultados.
-ESPERADO: dict[str, int] = {
-    "Bernardo": 111,
-    "Thiago": 118,
-    "Ricardo": 101,
-    "Fernando": 96,
-    "Gustavo": 101,
-    "Marcio": 120,
-    "Gabriel": 85,
-    "Renan": 83,
-    "Soares": 119,
-    "Marques": 129,
-}
-
-
 # ---------------------------------------------------------------------------
 # Tipos auxiliares
 # ---------------------------------------------------------------------------
@@ -128,21 +110,14 @@ class LinhaPalpite(NamedTuple):
 
 
 @dataclass(slots=True)
-class LinhaValidacao:
-    """Uma linha da validação de totais (por jogador)."""
-
-    nome: str
-    calculado: int
-    esperado: int | None
-    ok: bool
-
-
-@dataclass(slots=True)
 class ResultadoImportacao:
     """Resumo do que a importação fez — retornado por `importar()`.
 
-    Não imprime nem aborta: o caller (CLI ou rota admin) decide o que mostrar e
-    se trata `todos_ok=False` como erro.
+    Não imprime nem aborta: o caller (CLI ou rota admin) decide o que mostrar.
+    `todos_ok` reflete a checagem de pontuação por palpite vs a col O da planilha
+    (sem divergências). `totais` são os pontos atuais por jogador (informativo —
+    soma dos jogos já encerrados), sem comparar com um alvo fixo (que envelhece
+    num torneio ao vivo).
     """
 
     arquivo: str
@@ -156,7 +131,7 @@ class ResultadoImportacao:
     palpites_criados: int
     palpites_atualizados: int
     divergencias: list[tuple]
-    validacao: list[LinhaValidacao]
+    totais: list[tuple[str, int]]  # (nome, total no banco) — informativo
     todos_ok: bool
 
 
@@ -603,11 +578,13 @@ def importar(
         db.commit()
 
         # ---------------------------------------------------------------
-        # 5. Validação de totais (R1+R2). NÃO imprime nem aborta — devolve o
-        #    resultado; o caller (CLI ou rota admin) decide o que mostrar.
+        # 5. Totais atuais por jogador (informativo — soma dos jogos já
+        #    encerrados). NÃO compara com um "esperado" fixo: num torneio ao
+        #    vivo os resultados entram pela ESPN/admin e qualquer alvo fixo
+        #    envelhece. A checagem real de correção é a divergência por palpite
+        #    vs a col O da planilha (acima, em divergencias_planilha).
         # ---------------------------------------------------------------
-        validacao: list[LinhaValidacao] = []
-        todos_ok = True
+        totais: list[tuple[str, int]] = []
         for aba_nome, nome_display in JOGADORES.items():
             usuario = usuario_por_aba[aba_nome]
             # Soma os pontos apenas dos palpites de jogos COM resultado.
@@ -620,11 +597,7 @@ def importar(
                 )
             )
             total_calc = sum(r[0] for r in db.execute(stmt_total).all())
-            esperado = ESPERADO.get(nome_display)
-            ok = esperado is not None and total_calc == esperado
-            if esperado is not None and not ok:
-                todos_ok = False
-            validacao.append(LinhaValidacao(nome_display, total_calc, esperado, ok))
+            totais.append((nome_display, total_calc))
 
         return ResultadoImportacao(
             arquivo=_xlsx.name,
@@ -638,8 +611,8 @@ def importar(
             palpites_criados=stats_palpites["criados"],
             palpites_atualizados=stats_palpites["atualizados"],
             divergencias=divergencias_planilha,
-            validacao=validacao,
-            todos_ok=todos_ok,
+            totais=totais,
+            todos_ok=not divergencias_planilha,
         )
 
     except Exception:
@@ -675,15 +648,14 @@ def main() -> None:
     else:
         print("\nNenhuma divergência vs col O da planilha.")
 
-    print("\n=== VALIDAÇÃO DE PONTOS ===")
-    for v in res.validacao:
-        status_str = "OK" if v.ok else ("SEM ESPERADO" if v.esperado is None else "DIVERGE")
-        print(f"  {v.nome:12s} | calc {v.calculado:>4d} | esperado {str(v.esperado):>4s} | {status_str}")
+    print("\n=== TOTAIS ATUAIS (jogos encerrados) ===")
+    for nome, total in res.totais:
+        print(f"  {nome:12s} | {total:>4d} pts")
 
     if res.todos_ok:
-        print("\nImportação concluída com sucesso — todos os totais conferem.")
+        print("\nImportação concluída — sem divergências de pontuação vs a col O da planilha.")
     else:
-        print("\nERRO: totais divergem do esperado.")
+        print(f"\nERRO: {len(res.divergencias)} divergência(s) de pontuação vs a col O da planilha.")
         sys.exit(1)
 
 
