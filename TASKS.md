@@ -296,7 +296,43 @@ Branch `chore/follow-ups-qa` (a partir da `main` pós-deploy). Inclui também o 
 _Deploy da Fase 15: merge da PR → Render builda → roda `alembic upgrade head` (startCommand) que
 aplica `d4e5f6a7b8c9` na Neon automaticamente. As demais mudanças são código/estáticos._
 
+## Fase 16 — Backlog de ajustes (revisão architect + QA — 2026-06-22)
+
+Revisão de fechamento (read-only) pelos agentes **architect** e **qa** sobre a `main` pós Fases 10–15.
+Veredito: sistema **saudável e bem testado**, 4 regras invioláveis íntegras, **nenhum bloqueante**.
+Os itens abaixo são ajustes/dívida para priorizar depois. Lente: app interno ~10 usuários.
+
+### ALTA
+- [ ] **Login quebra (HTTP 500) com `senha_hash` malformado** _(QA — bug real, quick win)_ — `services/auth.py:22-24`: `bcrypt.checkpw` levanta `ValueError("Invalid salt")` p/ hash vazio/legado/corrompido; `verificar_senha`/`alterar_senha` não tratam → 500 no login em vez de 401. **Ação:** try/except em `checkpw` → `False`. + teste.
+- [ ] **ADR-001 — sync ESPN síncrono no `GET /` no pico de jogo ao vivo** _(architect — decisão)_ — `routers/dashboard.py` + `sync_resultados.py`: com throttle de 1 min ao vivo + auto-refresh de 60s, cada recarga vira fetch+escrita externos bloqueando o render (até `deadline`=8s) no momento de maior uso; o `deadline` só é checado entre fetches (passo 4), **não na fase de escrita** (`lancar_resultado` comita por jogo); e há corrida de throttle (sessões separadas → fetches duplicados). **Ação:** decidir — desacoplar render do fetch (página lê do banco + auto-refresh; fetch em background/throttle único com `UPDATE` condicional) **vs** manter síncrono + checar `deadline` no laço de escrita (paliativo).
+- [ ] **Lacuna de teste no caminho `deadline` do sync** _(QA)_ — `sync_resultados.py:136-141` e `espn.py` sem teste de "deadline estourado → pula datas / para no meio da janela D-1/D/D+1". **Ação:** testes com monkeypatch de `time.monotonic`.
+
+### MÉDIA
+- [ ] **ADR-002 — fuso BRT rotulado como UTC** _(architect)_ — `models/jogo.py`/`rodada.py` + `espn.py`: horários da planilha são BRT mas comparados com `datetime.now(timezone.utc)` → deslocamento de ~3h na detecção de "ao vivo/iminente" e na lógica de prazo. Inofensivo na fase de grupos (coincidência), **risco no mata-mata**. **Ação:** alinhar "agora" ao fuso dos dados (ou normalizar dados p/ UTC real) + teste do mata-mata.
+- [ ] **bcrypt trunca senha > 72 bytes silenciosamente** _(QA)_ — `services/auth.py:13-24`: bytes após o 72º ignorados (segurança); e `alterar_senha` daria falso "senha igual" p/ senhas que só diferem após o byte 72. **Ação:** validar `len(senha.encode()) <= 72`.
+- [ ] **Jogo "preso" ao vivo sem reversão** _(QA)_ — `sync_resultados.py`: se a ESPN parar de reportar um jogo sem `FULL_TIME` (ou abrev. sem de-para), ele fica `em_andamento` para sempre no dashboard. Recuperável só pelo admin. **Ação:** encerrar/filtrar jogos ao vivo "vencidos" há > N horas.
+- [ ] **Rodada `aberta=False` sem fechamento "revela" terceiros** _(QA — privacidade, semântica frágil)_ — `prazo.palpites_de_terceiros_visiveis:54-55` retorna True p/ `aberta=False, fechamento=None` (intencional p/ rodadas importadas/encerradas). Se o admin cria rodada nova e cadastra jogos antes de abrir, `detalhe_do_jogo` exporia palpites (na prática vazio — ninguém palpitou numa rodada nunca aberta; risco baixo). **Ação:** "revelado" exigir fechamento passado/flag explícito de encerrada; ou documentar a ordem (abrir antes de cadastrar) + teste.
+- [ ] **`alembic upgrade head` no `startCommand` derruba o serviço se a migração falhar** _(architect)_ — `render.yaml:7`: migração quebrada = home fora do ar. **Ação:** documentar no DEPLOY.md; idealmente release hook do Render separado do start. Não bloqueante.
+
+### BAIXA / quick wins
+- [ ] **`criar_jogo`/`atualizar_jogo` não tratam a `UniqueConstraint` nova** _(QA — consequência da Fase 15)_ — `services/admin.py`: criar jogo duplicado (mesma rodada+times) → 500 em vez de 400 amigável. **Ação:** capturar `IntegrityError` → `ValueError` (400). + teste.
+- [ ] **Atualização ao vivo pode sobrescrever placar bom com `None`** _(QA)_ — `sync_resultados.py:259-261`: só atualizar gols se `ev.gols_casa`/`gols_visitante` não forem None.
+- [ ] **Imports não usados** _(QA — ruff)_ — `field` em `dashboard.py`/`sync_resultados.py`, `func` em `dashboard.py`. **Ação:** `ruff --fix`.
+- [ ] **`_templates()` duplicado em 5 routers + `Jinja2Templates` por request** _(architect)_ — extrair p/ um `app/templating.py` único com as globals (`asset_version`). ~20 min, baixo risco.
+- [ ] **`_parse_score` definido dentro do loop em `parse_eventos`** _(architect)_ — `espn.py:128-132`: mover p/ módulo. Trivial.
+
+### NÃO vale mexer (consenso architect + qa — evitar over-engineering p/ ~10 usuários)
+- Mais índices (já há nas FKs + `data_hora`/`ordem`/`chave`); schemas Pydantic formais (YAGNI até haver payload JSON); Enum/CHECK p/ `status`; advisory locks/Redis p/ o throttle; filtrar `Usuario.ativo` no ramo do "próprio palpite" (inofensivo).
+- `httpx2` confirmado como dependência legítima (Pydantic Services / Tom Christie), **não** é typosquat.
+
 ## Backlog / Fase 2 (futuro)
 
+- [ ] **Exportar dados para Excel (.xlsx)** — resultado geral (classificação), jogos e palpites.
+  _A definir: gerar via rota admin (download) ou via script; uma aba por seção (Classificação / Jogos / Palpites); reusar `openpyxl` (já no `requirements.txt`). Hoje existe o `scripts/relatorio.py` (read-only, só console) como base da leitura desses mesmos dados — pensar melhor no formato/entrega depois._
+- [ ] **Painéis de BI do Grafana** — desempenho por jogador e geral. Datasource: o Grafana lê o **mesmo Postgres (Neon)** via **role read-only** dedicado (não a credencial da app). Roadmap em 3 passos:
+  - [ ] _**Passo 1 (agora) — Grafana Cloud free, um dashboard por usuário** (manual) com as estatísticas de cada jogador. "Um por usuário" porque no Cloud free o public dashboard não deixa o visitante trocar a variável nem expor `$jogador` no link. Dica: usar variável **Constant** `jogador` por dashboard + queries com `'$jogador'` (facilita a migração pro dash único depois)._
+  - [ ] _**Passo 2 — self-hosted via Docker** na máquina + **Cloudflare Tunnel**; primeiro tunelar **só o Grafana** pra teste (app/banco ficam onde estão; app é sensível a prazo → evitar indisponibilidade no deadline)._
+  - [ ] _**Passo 3 — migrar pro Grafana self-hosted e consolidar num dashboard único** com `$jogador`. Aí abre embed por painel (`<iframe>` `d-solo`) no app (`GET /estatisticas`, protegida): self-hosted OSS destrava `auth.anonymous` + `allow_embedding=true`, que o Cloud bloqueia._
+  - _Privacidade: dash por usuário mostra só o próprio jogador (ok). No dash geral, não exibir placares de terceiros com a rodada aberta — filtrar `WHERE NOT r.aberta`._
 - [ ] Notificação de "falta palpitar" antes do fechamento da rodada
 - [ ] Histórico de copas anteriores (aba `TODAS AS COPAS`)
