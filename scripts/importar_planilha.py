@@ -10,7 +10,11 @@ Uso:
     SENHA_PADRAO  senha provisória para os 10 jogadores (padrão: copaphibra2026).
 
 Idempotente: re-executar não duplica registros — get-or-create em tudo.
-O usuário admin pré-existente (criado por scripts/criar_admin.py) não é tocado.
+Jogos já ENCERRADOS (e suas pontuações) são preservados, não sobrescritos — o
+resultado no banco é autoritativo (pode ter vindo da ESPN/admin). A senha de
+usuários já existentes também é preservada. O estado de palpite das rodadas
+(aberta/janela) nunca é alterado no re-import. O usuário admin pré-existente
+(criado por scripts/criar_admin.py) não é tocado.
 
 Requisitos:
     pip install openpyxl
@@ -285,8 +289,14 @@ def _get_or_create_jogo(
     gols_casa: int | None,
     gols_visitante: int | None,
     status: str,
-) -> tuple[Jogo, bool]:
-    """Retorna (jogo, criado). Atualiza data_hora, gols e status se já existir."""
+) -> tuple[Jogo, bool, bool]:
+    """Retorna (jogo, criado, protegido).
+
+    - Jogo NOVO: cria com os dados da planilha → (jogo, True, False).
+    - Jogo já ENCERRADO: NÃO sobrescreve placar/status/data — o resultado no
+      banco é autoritativo (pode ter vindo da ESPN/admin) → (jogo, False, True).
+    - Jogo existente ainda não encerrado: atualiza data_hora/gols/status.
+    """
     stmt = select(Jogo).where(
         Jogo.rodada_id == rodada_id,
         Jogo.time_casa == time_casa,
@@ -304,12 +314,15 @@ def _get_or_create_jogo(
             status=status,
         )
         db.add(jogo)  # type: ignore[union-attr]
-        return jogo, True
+        return jogo, True, False
+    if jogo.status == STATUS_ENCERRADO:
+        # Não sobrescreve um jogo já encerrado (resultado autoritativo no banco).
+        return jogo, False, True
     jogo.data_hora = data_hora
     jogo.gols_casa = gols_casa
     jogo.gols_visitante = gols_visitante
     jogo.status = status
-    return jogo, False
+    return jogo, False, False
 
 
 def _get_or_create_palpite(
@@ -441,9 +454,12 @@ def importar(
         # ---------------------------------------------------------------
         # 3. Jogos
         # ---------------------------------------------------------------
-        stats_jogos = {"criados": 0, "atualizados": 0}
+        stats_jogos = {"criados": 0, "atualizados": 0, "protegidos": 0}
         # Mapa (rodada_id, time_casa, time_visitante) -> Jogo
         jogo_por_chave: dict[tuple[int, str, str], Jogo] = {}
+        # Jogos já encerrados que NÃO foram tocados — seus palpites/pontos
+        # também não devem ser reescritos (resultado autoritativo no banco).
+        jogos_protegidos: set[tuple[int, str, str]] = set()
 
         for linha in linhas_oficial:
             rodada_info = row_para_rodada.get(linha.row)
@@ -453,7 +469,7 @@ def importar(
             ordem, _ = rodada_info
             rodada = rodada_por_ordem[ordem]
 
-            jogo, criado = _get_or_create_jogo(
+            jogo, criado, protegido = _get_or_create_jogo(
                 db=db,
                 rodada_id=rodada.id,
                 time_casa=linha.time_casa,
@@ -465,7 +481,10 @@ def importar(
             )
             chave = (rodada.id, linha.time_casa, linha.time_visitante)
             jogo_por_chave[chave] = jogo
-            if criado:
+            if protegido:
+                jogos_protegidos.add(chave)
+                stats_jogos["protegidos"] += 1
+            elif criado:
                 stats_jogos["criados"] += 1
             else:
                 stats_jogos["atualizados"] += 1
@@ -491,6 +510,10 @@ def importar(
                 if jogo is None:
                     # Não deveria ocorrer; jogo foi criado na etapa anterior
                     print(f"AVISO: jogo não encontrado para linha {row_num} aba {aba_nome}")
+                    continue
+                if chave_jogo in jogos_protegidos:
+                    # Jogo encerrado preservado — não reescreve palpite/pontos
+                    # (evita recomputar pontos a partir de um placar divergente).
                     continue
 
                 # Calcula pontos
@@ -542,7 +565,11 @@ def importar(
         print("\n=== RESUMO DA IMPORTAÇÃO ===")
         print(f"Usuários : {stats_usuarios['criados']} criados, {stats_usuarios['atualizados']} atualizados")
         print(f"Rodadas  : {stats_rodadas['criadas']} criadas, {stats_rodadas['atualizadas']} atualizadas")
-        print(f"Jogos    : {stats_jogos['criados']} criados, {stats_jogos['atualizados']} atualizados")
+        print(
+            f"Jogos    : {stats_jogos['criados']} criados, "
+            f"{stats_jogos['atualizados']} atualizados, "
+            f"{stats_jogos['protegidos']} preservados (encerrados)"
+        )
         print(f"Palpites : {stats_palpites['criados']} criados, {stats_palpites['atualizados']} atualizados")
 
         if divergencias_planilha:

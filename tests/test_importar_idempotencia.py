@@ -6,6 +6,7 @@ existe (preserva a senha que o jogador trocou) nem rebaixa `is_admin`.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -13,9 +14,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.database import Base
-from app.models import Usuario
+from app.models import Rodada, Usuario
 from app.services.auth import hash_senha, verificar_senha
-from scripts.importar_planilha import _get_or_create_usuario
+from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO
+from scripts.importar_planilha import _get_or_create_jogo, _get_or_create_usuario
 
 
 @pytest.fixture()
@@ -85,3 +87,50 @@ def test_rerun_nao_rebaixa_is_admin_nem_senha(db: Session) -> None:
     assert existente.is_admin is True  # nunca rebaixado
     assert verificar_senha("admin_pwd", existente.senha_hash) is True
     assert verificar_senha("senha_padrao", existente.senha_hash) is False
+
+
+def _seed_rodada(db: Session, ordem: int = 1) -> Rodada:
+    rodada = Rodada(nome=f"{ordem}ª Rodada", ordem=ordem, aberta=False)
+    db.add(rodada)
+    db.commit()
+    return rodada
+
+
+def test_jogo_encerrado_nao_e_sobrescrito(db: Session) -> None:
+    """Re-import NÃO sobrescreve um jogo já encerrado (resultado autoritativo)."""
+    rodada = _seed_rodada(db)
+    dh = datetime(2026, 6, 11, 16, 0, tzinfo=timezone.utc)
+
+    jogo, criado, protegido = _get_or_create_jogo(
+        db, rodada.id, "BRA", "ARG", dh, 2, 1, STATUS_ENCERRADO
+    )
+    db.commit()
+    assert (criado, protegido) == (True, False)
+
+    # Re-import com placar diferente NÃO pode sobrescrever.
+    jogo2, criado2, protegido2 = _get_or_create_jogo(
+        db, rodada.id, "BRA", "ARG", dh, 0, 0, STATUS_ENCERRADO
+    )
+    db.commit()
+    assert (criado2, protegido2) == (False, True)
+    assert jogo2.id == jogo.id
+    assert (jogo2.gols_casa, jogo2.gols_visitante) == (2, 1)  # preservado
+
+
+def test_jogo_agendado_ainda_recebe_resultado(db: Session) -> None:
+    """Jogo ainda não encerrado é atualizado (sincroniza um resultado novo da planilha)."""
+    rodada = _seed_rodada(db, ordem=2)
+    dh = datetime(2026, 6, 12, 16, 0, tzinfo=timezone.utc)
+
+    jogo, criado, protegido = _get_or_create_jogo(
+        db, rodada.id, "FRA", "ESP", dh, None, None, STATUS_AGENDADO
+    )
+    db.commit()
+    assert (criado, protegido) == (True, False)
+
+    jogo2, criado2, protegido2 = _get_or_create_jogo(
+        db, rodada.id, "FRA", "ESP", dh, 3, 0, STATUS_ENCERRADO
+    )
+    db.commit()
+    assert (criado2, protegido2) == (False, False)
+    assert (jogo2.gols_casa, jogo2.gols_visitante, jogo2.status) == (3, 0, STATUS_ENCERRADO)
