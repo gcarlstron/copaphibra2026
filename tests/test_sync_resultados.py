@@ -835,3 +835,76 @@ class TestDeadline:
         assert resumo.lancados == 0
         db_session.refresh(jogo)
         assert jogo.status == STATUS_AGENDADO
+
+
+# ---------------------------------------------------------------------------
+# MÉDIA: jogo "preso" ao vivo (ESPN parou de reportar) é revertido p/ agendado
+# ---------------------------------------------------------------------------
+
+
+class TestJogoPresoAoVivo:
+    def _seed_jogo_ao_vivo(self, db: Session, data_hora: datetime) -> Jogo:
+        rodada = Rodada(nome="Rodada 1", ordem=1, aberta=False)
+        db.add(rodada)
+        db.flush()
+        jogo = Jogo(
+            rodada_id=rodada.id,
+            data_hora=data_hora,
+            time_casa="México",
+            time_visitante="África do Sul",
+            status=STATUS_EM_ANDAMENTO,
+            gols_casa=1,
+            gols_visitante=0,
+        )
+        db.add(jogo)
+        _seed_alias(db, "MEX", "México")
+        _seed_alias(db, "RSA", "África do Sul")
+        db.commit()
+        return jogo
+
+    def test_reverte_quando_espn_nao_reporta_mais(self, db_session: Session) -> None:
+        """Ao vivo há 6h e a ESPN não reporta → volta p/ agendado, sem placar."""
+        from datetime import timedelta
+
+        jogo = self._seed_jogo_ao_vivo(db_session, _AGORA - timedelta(hours=6))
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela", return_value=[]
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.revertidos_presos == 1
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_AGENDADO
+        assert jogo.gols_casa is None
+        assert jogo.gols_visitante is None
+
+    def test_nao_reverte_jogo_recente(self, db_session: Session) -> None:
+        """Ao vivo há só 1h (dentro do limite) → não reverte."""
+        from datetime import timedelta
+
+        jogo = self._seed_jogo_ao_vivo(db_session, _AGORA - timedelta(hours=1))
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela", return_value=[]
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.revertidos_presos == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_EM_ANDAMENTO
+
+    def test_nao_reverte_se_espn_ainda_reporta_ao_vivo(self, db_session: Session) -> None:
+        """Ao vivo há 6h mas a ESPN AINDA reporta ao vivo → mantém (atualiza)."""
+        from datetime import timedelta
+
+        jogo = self._seed_jogo_ao_vivo(db_session, _AGORA - timedelta(hours=6))
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_ao_vivo("MEX", "RSA", 2, 1)],
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.revertidos_presos == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_EM_ANDAMENTO
+        assert jogo.gols_casa == 2
+        assert jogo.gols_visitante == 1

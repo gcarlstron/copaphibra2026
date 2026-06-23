@@ -72,6 +72,22 @@ python scripts/seed_team_alias.py       # popula o de-para de times (48) p/ o sy
 - **Troque a senha do admin** em Admin → Usuários → Resetar senha.
 - Observação: no free tier o serviço **hiberna após ~15 min ocioso**; a primeira visita depois disso demora ~30-60s para "acordar". Normal para uso esporádico.
 
+### A6. Risco: migração no `startCommand` (ADR — Fase 16)
+O `startCommand` roda `alembic upgrade head && uvicorn ...`. Se uma migração
+**falhar**, o `&&` corta o comando, o uvicorn não sobe e, no free tier (instância
+única), a home fica **fora do ar** até a migração ser corrigida e re-deployada.
+
+Mitigações:
+- **Antes de cada deploy com migração**, rode `alembic upgrade head` apontando para
+  uma cópia/branch do Postgres da Neon (ou um Postgres local) e confirme que passa.
+- Mantenha as migrações pequenas e tenha o **commit bom anterior** à mão para
+  rollback rápido (re-deploy do commit anterior) caso a nova quebre.
+- **Plano pago (upgrade):** mover o `alembic upgrade head` para um **Pre-Deploy
+  Command** do Render (`preDeployCommand` no `render.yaml`) — ele roda **antes** de
+  promover a nova versão e, se falhar, o deploy é abortado e a **versão atual
+  continua servindo**. ⚠️ `preDeployCommand` **só existe em instâncias pagas**;
+  no free tier, mantenha no `startCommand` com as mitigações acima.
+
 ---
 
 # Opção B — Servidor próprio / VM

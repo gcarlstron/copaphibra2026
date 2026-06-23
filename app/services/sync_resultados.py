@@ -50,8 +50,10 @@ from app.models.sync_state import SyncState
 from app.models.team_alias import TeamAlias
 from app.services.admin import lancar_resultado
 from app.services.dashboard import (
-    STATUS_ENCERRADO,
+    STATUS_AGENDADO,
+    STATUS_AO_VIVO,
     STATUS_EM_ANDAMENTO,
+    STATUS_ENCERRADO,
     STATUS_INTERVALO,
 )
 from app.services.espn import (
@@ -68,6 +70,11 @@ CHAVE_SYNC = "espn_resultados"
 # para decidir o intervalo de throttle (busca rápida durante jogos ao vivo).
 _JANELA_JOGO_AO_VIVO_H = 3
 
+# Após este tempo (horas) do início, um jogo ainda marcado "ao vivo" que a ESPN
+# não reporta mais é considerado PRESO e revertido para "agendado" (um jogo dura
+# ~2h; 5h é folga suficiente para não pegar um jogo legítimo em andamento).
+_LIMITE_AO_VIVO_PRESO_H = 5
+
 
 @dataclass(slots=True)
 class ResumoSync:
@@ -75,6 +82,7 @@ class ResumoSync:
 
     lancados: int = 0
     atualizados_ao_vivo: int = 0
+    revertidos_presos: int = 0
     ignorados_sem_depara: int = 0
     ignorados_sem_jogo: int = 0
 
@@ -232,6 +240,7 @@ def sincronizar_resultados(
     # 5b. Atualiza status/placar de jogos AO VIVO (em andamento / intervalo).
     #     NÃO pontua — só lancar_resultado (FULL_TIME) recalcula Palpite.pontos.
     #     Reutiliza os eventos já materializados no passo 4.
+    ao_vivo_atualizados: set[int] = set()
     for data_alvo, jogos_do_dia in jogos_por_data.items():
         if deadline is not None and time.monotonic() >= deadline:
             logger.warning(
@@ -276,6 +285,7 @@ def sincronizar_resultados(
             jogo_atual.gols_casa = novo_gols_casa
             jogo_atual.gols_visitante = novo_gols_visitante
             resumo.atualizados_ao_vivo += 1
+            ao_vivo_atualizados.add(jogo.id)
             logger.info(
                 "Jogo ao vivo atualizado: %s %s×%s %s (status=%s, jogo_id=%d)",
                 jogo.time_casa,
@@ -285,6 +295,30 @@ def sincronizar_resultados(
                 novo_status,
                 jogo.id,
             )
+
+    # 5c. Reverte jogos "presos" ao vivo: marcados em andamento/intervalo há mais
+    #     de _LIMITE_AO_VIVO_PRESO_H horas e que a ESPN NÃO reportou ao vivo nesta
+    #     execução (parou de cobri-los). Volta para "agendado" sem placar, para não
+    #     ficarem eternamente "ao vivo" no dashboard; a próxima sync tenta resolver
+    #     o resultado de novo (segue pendente). Não toca nos que a ESPN ainda
+    #     reporta ao vivo agora (ficaram em ao_vivo_atualizados).
+    limite_preso = agora - timedelta(hours=_LIMITE_AO_VIVO_PRESO_H)
+    presos = db.scalars(
+        select(Jogo).where(
+            Jogo.status.in_(STATUS_AO_VIVO),
+            Jogo.data_hora <= limite_preso,
+        )
+    ).all()
+    for jogo_preso in presos:
+        if jogo_preso.id in ao_vivo_atualizados:
+            continue
+        jogo_preso.status = STATUS_AGENDADO
+        jogo_preso.gols_casa = None
+        jogo_preso.gols_visitante = None
+        resumo.revertidos_presos += 1
+        logger.warning(
+            "Jogo ao vivo preso revertido para 'agendado': jogo_id=%d", jogo_preso.id
+        )
 
     db.commit()
 
@@ -443,9 +477,10 @@ def sincronizar_se_necessario(
     logger.info("Iniciando sincronização de resultados ESPN.")
     resumo = sincronizar_resultados(db, agora_utc, deadline=deadline)
     logger.info(
-        "Sync ESPN concluído: %d lançados, %d ao vivo, %d sem de-para, %d sem jogo.",
+        "Sync ESPN concluído: %d lançados, %d ao vivo, %d revertidos, %d sem de-para, %d sem jogo.",
         resumo.lancados,
         resumo.atualizados_ao_vivo,
+        resumo.revertidos_presos,
         resumo.ignorados_sem_depara,
         resumo.ignorados_sem_jogo,
     )
