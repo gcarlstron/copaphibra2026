@@ -327,5 +327,7 @@ Os itens abaixo são ajustes/dívida para priorizar depois. Lente: app interno ~
 
 ## Backlog / Fase 2 (futuro)
 
+- [ ] **Exportar dados para Excel (.xlsx)** — resultado geral (classificação), jogos e palpites.
+  _A definir: gerar via rota admin (download) ou via script; uma aba por seção (Classificação / Jogos / Palpites); reusar `openpyxl` (já no `requirements.txt`). Hoje existe o `scripts/relatorio.py` (read-only, só console) como base da leitura desses mesmos dados — pensar melhor no formato/entrega depois._
 - [ ] Notificação de "falta palpitar" antes do fechamento da rodada
 - [ ] Histórico de copas anteriores (aba `TODAS AS COPAS`)
