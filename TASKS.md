@@ -329,11 +329,10 @@ Os itens abaixo são ajustes/dívida para priorizar depois. Lente: app interno ~
 
 - [ ] **Exportar dados para Excel (.xlsx)** — resultado geral (classificação), jogos e palpites.
   _A definir: gerar via rota admin (download) ou via script; uma aba por seção (Classificação / Jogos / Palpites); reusar `openpyxl` (já no `requirements.txt`). Hoje existe o `scripts/relatorio.py` (read-only, só console) como base da leitura desses mesmos dados — pensar melhor no formato/entrega depois._
-- [ ] **Embedar/linkar painéis de BI do Grafana** — dashboards de desempenho por jogador e geral, integrados ao app.
-  _Datasource: o Grafana lê o **mesmo Postgres (Neon)** direto — criar um **role read-only** na Neon só para ele (não usar a credencial da app). Opções de integração (doc Grafana v12), do mais simples ao mais acoplado:_
-  - _**Link externo** — item de menu "Estatísticas/BI" abrindo o Grafana em nova aba. Zero config; auth fica por conta do Grafana. Recomendado para começar._
-  - _**Public dashboards** (GA desde v10.2, em todas as edições incl. Cloud) — gera URL pública com `accessToken`, sem login, embedável em `<iframe>`. Encaixa no nosso caso porque os dados já viram públicos após a rodada fechar. Atenção: a URL pública expõe o dashboard a qualquer um que tenha o link._
-  - _**Share embed por painel** (`<iframe>` com `d-solo` + `panelId`) — exige usuário logado no Grafana **ou** `auth.anonymous` ligado; embed de painel + anonymous **só em OSS/Enterprise, não no Grafana Cloud**. Requer `allow_embedding=true` (`GF_SECURITY_ALLOW_EMBEDDING=true`)._
-  _Lado app: a embed entra como `<iframe>` numa página nova (ex.: `GET /estatisticas`, protegida) ou no dashboard — trivial no Jinja2. A decidir: edição/hospedagem do Grafana (Cloud × self-hosted) e o nível de exposição aceitável._
+- [ ] **Painéis de BI do Grafana** — desempenho por jogador e geral. Datasource: o Grafana lê o **mesmo Postgres (Neon)** via **role read-only** dedicado (não a credencial da app). Roadmap em 3 passos:
+  - [ ] _**Passo 1 (agora) — Grafana Cloud free, um dashboard por usuário** (manual) com as estatísticas de cada jogador. "Um por usuário" porque no Cloud free o public dashboard não deixa o visitante trocar a variável nem expor `$jogador` no link. Dica: usar variável **Constant** `jogador` por dashboard + queries com `'$jogador'` (facilita a migração pro dash único depois)._
+  - [ ] _**Passo 2 — self-hosted via Docker** na máquina + **Cloudflare Tunnel**; primeiro tunelar **só o Grafana** pra teste (app/banco ficam onde estão; app é sensível a prazo → evitar indisponibilidade no deadline)._
+  - [ ] _**Passo 3 — migrar pro Grafana self-hosted e consolidar num dashboard único** com `$jogador`. Aí abre embed por painel (`<iframe>` `d-solo`) no app (`GET /estatisticas`, protegida): self-hosted OSS destrava `auth.anonymous` + `allow_embedding=true`, que o Cloud bloqueia._
+  - _Privacidade: dash por usuário mostra só o próprio jogador (ok). No dash geral, não exibir placares de terceiros com a rodada aberta — filtrar `WHERE NOT r.aberta`._
 - [ ] Notificação de "falta palpitar" antes do fechamento da rodada
 - [ ] Histórico de copas anteriores (aba `TODAS AS COPAS`)
