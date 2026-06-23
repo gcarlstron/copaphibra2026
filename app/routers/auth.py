@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
+from app.templating import get_templates as _templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,13 +12,6 @@ from app.models import Usuario
 from app.services.auth import alterar_senha, verificar_senha
 
 router = APIRouter()
-
-
-def _templates() -> Jinja2Templates:
-    settings = get_settings()
-    templates = Jinja2Templates(directory=str(settings.templates_dir))
-    templates.env.globals["asset_version"] = settings.asset_version
-    return templates
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> Usuario | None:

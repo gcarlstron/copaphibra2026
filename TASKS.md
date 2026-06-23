@@ -320,8 +320,8 @@ Os itens abaixo são ajustes/dívida para priorizar depois. Lente: app interno ~
 - [x] ✅ **`criar_jogo`/`atualizar_jogo` não tratam a `UniqueConstraint` nova** _(QA — consequência da Fase 15)_ — feito 2026-06-23 (router de `atualizar_jogo` agora distingue 404 × 400). — `services/admin.py`: criar jogo duplicado (mesma rodada+times) → 500 em vez de 400 amigável. **Ação:** capturar `IntegrityError` → `ValueError` (400). + teste.
 - [x] ✅ **Atualização ao vivo pode sobrescrever placar bom com `None`** _(QA)_ — feito 2026-06-23. — `sync_resultados.py:259-261`: só atualizar gols se `ev.gols_casa`/`gols_visitante` não forem None.
 - [x] ✅ **Imports não usados** _(QA — ruff)_ — `field` em `dashboard.py`/`sync_resultados.py`, `func` em `dashboard.py` removidos — feito 2026-06-23.
-- [ ] **`_templates()` duplicado em 5 routers + `Jinja2Templates` por request** _(architect)_ — extrair p/ um `app/templating.py` único com as globals (`asset_version`). ~20 min, baixo risco.
-- [ ] **`_parse_score` definido dentro do loop em `parse_eventos`** _(architect)_ — `espn.py:128-132`: mover p/ módulo. Trivial.
+- [x] ✅ **`_templates()` duplicado em 5 routers + `Jinja2Templates` por request** _(architect)_ — feito 2026-06-23. `app/templating.py` com instância única compartilhada (preserva o cache de templates do Jinja) + `asset_version` atualizado por chamada; os 5 routers passam a `from app.templating import get_templates as _templates`.
+- [x] ✅ **`_parse_score` definido dentro do loop em `parse_eventos`** _(architect)_ — feito 2026-06-23 (movido p/ nível de módulo em `espn.py`).
 
 ### NÃO vale mexer (consenso architect + qa — evitar over-engineering p/ ~10 usuários)
 - Mais índices (já há nas FKs + `data_hora`/`ordem`/`chave`); schemas Pydantic formais (YAGNI até haver payload JSON); Enum/CHECK p/ `status`; advisory locks/Redis p/ o throttle; filtrar `Usuario.ativo` no ramo do "próprio palpite" (inofensivo).

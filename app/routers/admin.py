@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
+from app.templating import get_templates as _templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -32,13 +32,6 @@ router = APIRouter(prefix="/admin")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _templates() -> Jinja2Templates:
-    settings = get_settings()
-    templates = Jinja2Templates(directory=str(settings.templates_dir))
-    templates.env.globals["asset_version"] = settings.asset_version
-    return templates
 
 
 def _check_admin(current_user: Usuario | None) -> Usuario | RedirectResponse:

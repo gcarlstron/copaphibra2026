@@ -5,7 +5,7 @@ import time
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
+from app.templating import get_templates as _templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -18,13 +18,6 @@ from app.services.tempo import agora as agora_dados
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _templates() -> Jinja2Templates:
-    settings = get_settings()
-    templates = Jinja2Templates(directory=str(settings.templates_dir))
-    templates.env.globals["asset_version"] = settings.asset_version
-    return templates
 
 
 @router.get("/", response_class=HTMLResponse)

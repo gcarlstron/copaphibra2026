@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
+from app.templating import get_templates as _templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -12,13 +12,6 @@ from app.services.palpites import listar_palpites_do_usuario, salvar_palpite
 from app.services.tempo import agora as agora_dados
 
 router = APIRouter(prefix="/palpites")
-
-
-def _templates() -> Jinja2Templates:
-    settings = get_settings()
-    templates = Jinja2Templates(directory=str(settings.templates_dir))
-    templates.env.globals["asset_version"] = settings.asset_version
-    return templates
 
 
 @router.get("", response_class=HTMLResponse)
