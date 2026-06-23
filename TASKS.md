@@ -279,20 +279,22 @@ Abordagem (parametrizada por **classe**, decidida com o usuário 2026-06-22):
 ### 14b — "Próximos jogos" clicável (vai pro detalhe do jogo)
 - [ ] No `dashboard.html`, a seção **Próximos jogos** usa `<div class="upcoming-row">` (não clicável). Trocar por `<a href="/jogos/{{ jogo.jogo_id }}">` como já é em "Últimos resultados" (`result-row`), ajustando o CSS (`.upcoming-row` → estado clicável/hover). O `jogo_id` já vem no `JogoResumoView`, então é só template + CSS.
 
-## Fase 15 — Follow-ups técnicos/QA (em andamento — branch `chore/follow-ups-qa`)
+## Fase 15 — Follow-ups técnicos/QA (concluída — 2026-06-22 — branch `chore/follow-ups-qa`)
 
 Branch `chore/follow-ups-qa` (a partir da `main` pós-deploy). Inclui também o ajuste dos cards
-(commit `fix:`). Branch **local, ainda não pushed** (PR ao final). **212 testes.**
+(commit `fix:`). **213 testes.** **Deploy desta fase exige a migração `d4e5f6a7b8c9` na Neon**
+(`alembic upgrade head`).
 
 - [x] ✅ **Cache-busting dos estáticos:** `?v={{ asset_version }}` em app.css/ui.js no `base.html`; `Settings.asset_version` = `RENDER_GIT_COMMIT[:12]` (prod, muda a cada deploy) ou mtime de app.css/ui.js (dev); global injetado no `_templates()` dos 5 routers → 2026-06-22
 - [x] ✅ **Importador idempotente na senha:** `_get_or_create_usuario` só seta `senha_hash` ao CRIAR; em existente atualiza só nome/ativo (preserva a senha trocada, não toca `is_admin`). + testes unit → 2026-06-22
 - [x] ✅ **Importador preserva jogos encerrados:** `_get_or_create_jogo` não sobrescreve jogo já ENCERRADO (resultado autoritativo, pode vir da ESPN/admin) → `protegido=True`; palpites desses jogos também não são reescritos (evita pontos divergentes). Rodadas já eram preservadas (só `nome` atualiza). + testes _(pedido do usuário)_ → 2026-06-22
 - [x] ✅ **Remover campo morto `terceiros_visiveis`** de `services/palpites.py`; regressão de timezone (`GET /palpites` com fechamento naive → 200) segue coberta por `rodada_aberta_para_edicao` → 2026-06-22
-- [ ] **`UniqueConstraint(rodada_id, time_casa, time_visitante)` em `Jogo`:** model + **nova migração Alembic** (e aplicar na Neon — passo de deploy). Atenção: duplicatas em prod fariam a migração falhar (improvável — importador é get-or-create).
-- [ ] **Type hints do importador:** trocar `object`/`# type: ignore` por `Worksheet`/`Session`/`Callable` em `importar_planilha.py`.
-- [ ] (Menor) filtrar `Usuario.ativo` no ramo do "próprio palpite" em `services/jogos.py` (inofensivo hoje).
+- [x] ✅ **`UniqueConstraint(rodada_id, time_casa, time_visitante)` em `Jogo`:** `__table_args__` no model + migração `d4e5f6a7b8c9` (modo batch: SQLite recria, Postgres/Neon faz ALTER direto); testada upgrade→downgrade→upgrade; + teste de IntegrityError. **Deploy:** `alembic upgrade head` na Neon (falha se houver duplicatas — improvável, get-or-create) → 2026-06-22
+- [x] ✅ **Type hints do importador:** `Session`/`Worksheet`/`Callable` no lugar de `object`/`# type: ignore` em `importar_planilha.py` → 2026-06-22
+- [ ] (Menor, opcional — NÃO bloqueia) filtrar `Usuario.ativo` no ramo do "próprio palpite" em `services/jogos.py` (inofensivo: o usuário sempre vê o próprio palpite).
 
-_Retomada: `git checkout chore/follow-ups-qa`; faltam UniqueConstraint (com migração) e type hints; rodar a suíte; push + PR._
+_Deploy da Fase 15: merge da PR → Render builda → roda `alembic upgrade head` (startCommand) que
+aplica `d4e5f6a7b8c9` na Neon automaticamente. As demais mudanças são código/estáticos._
 
 ## Backlog / Fase 2 (futuro)
 
