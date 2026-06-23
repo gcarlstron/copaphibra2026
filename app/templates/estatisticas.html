@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="round-card">
+    <header class="round-head">
+        <h2>Estatísticas (BI)</h2>
+    </header>
+    <p class="muted">Painéis de desempenho no Grafana. Abrem em uma nova aba.</p>
+
+    <div class="estatisticas-acoes">
+        {% if painel_usuario_url %}
+        <a class="btn-primary" href="{{ painel_usuario_url }}" target="_blank" rel="noopener noreferrer">
+            Meu painel — {{ nome_usuario }}
+        </a>
+        {% endif %}
+        <a class="btn-secondary" href="{{ painel_geral_url }}" target="_blank" rel="noopener noreferrer">
+            Quadro geral
+        </a>
+    </div>
+
+    {% if not painel_usuario_url %}
+    <p class="muted">Você ainda não tem um painel individual — mostrando só o quadro geral.</p>
+    {% endif %}
+</section>
+{% endblock %}
