@@ -329,5 +329,11 @@ Os itens abaixo são ajustes/dívida para priorizar depois. Lente: app interno ~
 
 - [ ] **Exportar dados para Excel (.xlsx)** — resultado geral (classificação), jogos e palpites.
   _A definir: gerar via rota admin (download) ou via script; uma aba por seção (Classificação / Jogos / Palpites); reusar `openpyxl` (já no `requirements.txt`). Hoje existe o `scripts/relatorio.py` (read-only, só console) como base da leitura desses mesmos dados — pensar melhor no formato/entrega depois._
+- [ ] **Embedar/linkar painéis de BI do Grafana** — dashboards de desempenho por jogador e geral, integrados ao app.
+  _Datasource: o Grafana lê o **mesmo Postgres (Neon)** direto — criar um **role read-only** na Neon só para ele (não usar a credencial da app). Opções de integração (doc Grafana v12), do mais simples ao mais acoplado:_
+  - _**Link externo** — item de menu "Estatísticas/BI" abrindo o Grafana em nova aba. Zero config; auth fica por conta do Grafana. Recomendado para começar._
+  - _**Public dashboards** (GA desde v10.2, em todas as edições incl. Cloud) — gera URL pública com `accessToken`, sem login, embedável em `<iframe>`. Encaixa no nosso caso porque os dados já viram públicos após a rodada fechar. Atenção: a URL pública expõe o dashboard a qualquer um que tenha o link._
+  - _**Share embed por painel** (`<iframe>` com `d-solo` + `panelId`) — exige usuário logado no Grafana **ou** `auth.anonymous` ligado; embed de painel + anonymous **só em OSS/Enterprise, não no Grafana Cloud**. Requer `allow_embedding=true` (`GF_SECURITY_ALLOW_EMBEDDING=true`)._
+  _Lado app: a embed entra como `<iframe>` numa página nova (ex.: `GET /estatisticas`, protegida) ou no dashboard — trivial no Jinja2. A decidir: edição/hospedagem do Grafana (Cloud × self-hosted) e o nível de exposição aceitável._
 - [ ] Notificação de "falta palpitar" antes do fechamento da rodada
 - [ ] Histórico de copas anteriores (aba `TODAS AS COPAS`)
