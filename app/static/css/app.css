@@ -447,6 +447,14 @@ body::before {
     background: var(--accent-soft);
 }
 
+/* ── Estatísticas (links para os painéis do Grafana) ─────────────────── */
+.estatisticas-acoes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 16px 0 8px;
+}
+
 /* Cabeçalho de seção com ações */
 .section-head {
     display: flex;
