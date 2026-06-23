@@ -15,6 +15,7 @@ from app.models.team_alias import TeamAlias
 from app.services.auth import hash_senha
 from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO
 from app.services.jogos import detalhe_do_jogo
+from app.services.tempo import agora as agora_dados
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -356,7 +357,7 @@ def test_get_jogo_palpites_visiveis_apos_fechamento(
 
     Usa timestamps relativos ao instante real de execução.
     """
-    agora_real = datetime.now(timezone.utc)
+    agora_real = agora_dados()
     rodada = _seed_rodada(
         db_session,
         aberta=True,
@@ -390,7 +391,7 @@ def test_get_jogo_palpites_bloqueados_com_rodada_aberta(
     Usa timestamps relativos ao instante real de execução para que a janela de
     fechamento ainda não tenha passado quando o router chama datetime.now().
     """
-    agora_real = datetime.now(timezone.utc)
+    agora_real = agora_dados()
     rodada = _seed_rodada(
         db_session,
         aberta=True,

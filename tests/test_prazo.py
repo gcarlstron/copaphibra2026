@@ -33,6 +33,18 @@ def test_rodada_importada_fechada_sem_janela_libera_terceiros() -> None:
     assert palpites_de_terceiros_visiveis(False, None, None, agora) is True
 
 
+def test_rodada_nunca_aberta_sem_janela_e_tratada_como_revelada() -> None:
+    """aberta=False + sem janela → 'revelado' (mesma forma da rodada importada).
+
+    Documenta o caso frágil (QA Fase 16): é seguro porque uma rodada que nunca
+    foi aberta não tem palpites — `salvar_palpite` revalida a janela, então não há
+    palpite de terceiros para vazar mesmo com a visibilidade ligada.
+    """
+    agora = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)
+
+    assert palpites_de_terceiros_visiveis(False, None, None, agora) is True
+
+
 def test_rodada_agendada_abertura_futura_oculta_terceiros() -> None:
     """Pré-abertura (abertura no futuro): não edita ainda e terceiros seguem ocultos."""
     agora = datetime(2026, 6, 18, 12, 0, tzinfo=timezone.utc)

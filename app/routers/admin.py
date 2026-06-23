@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from fastapi.templating import Jinja2Templates
+from app.templating import get_templates as _templates
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -32,13 +32,6 @@ router = APIRouter(prefix="/admin")
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def _templates() -> Jinja2Templates:
-    settings = get_settings()
-    templates = Jinja2Templates(directory=str(settings.templates_dir))
-    templates.env.globals["asset_version"] = settings.asset_version
-    return templates
 
 
 def _check_admin(current_user: Usuario | None) -> Usuario | RedirectResponse:
@@ -237,7 +230,13 @@ def atualizar_jogo(
         dt = _parse_data_hora(data_hora)
         admin_svc.atualizar_jogo(db, jogo_id=jogo_id, data_hora=dt, time_casa=time_casa, time_visitante=time_visitante)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        msg = str(exc)
+        http_status = (
+            status.HTTP_404_NOT_FOUND
+            if "não encontrad" in msg
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=http_status, detail=msg) from exc
 
     return _redirect_or_htmx(request, "/admin/jogos")
 

@@ -85,6 +85,14 @@ class EventoEspn:
 # ---------------------------------------------------------------------------
 
 
+def _parse_score(raw: object) -> int | None:
+    """Converte o placar bruto da ESPN (string ou None) em int, ou None."""
+    try:
+        return int(raw)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+
+
 def parse_eventos(payload: dict) -> list[EventoEspn]:
     """Converte o payload bruto da ESPN em lista de EventoEspn.
 
@@ -125,12 +133,6 @@ def parse_eventos(payload: dict) -> list[EventoEspn]:
                 continue
 
             # Scores are strings or None
-            def _parse_score(raw: object) -> int | None:
-                try:
-                    return int(raw)  # type: ignore[arg-type]
-                except (TypeError, ValueError):
-                    return None
-
             gols_casa = _parse_score(home.get("score"))
             gols_visitante = _parse_score(away.get("score"))
 

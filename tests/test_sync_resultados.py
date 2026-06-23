@@ -29,6 +29,7 @@ from app.services.sync_resultados import (
     CHAVE_SYNC,
     ResumoSync,
     _get_or_create_sync_state,
+    _reivindicar_slot,
     disparar_sync_se_necessario,
     sincronizar_resultados,
 )
@@ -644,6 +645,32 @@ class TestAtualizacaoAoVivo:
         assert r1.atualizados_ao_vivo == 1
         assert r2.atualizados_ao_vivo == 0
 
+    def test_ao_vivo_nao_sobrescreve_placar_bom_com_none(self, db_session: Session) -> None:
+        """Evento ao vivo sem gols (None) não pode apagar um placar já conhecido."""
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        # 1) Ao vivo 2×1 — grava um placar bom
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_ao_vivo("MEX", "RSA", 2, 1)],
+        ):
+            sincronizar_resultados(db_session, _AGORA)
+        db_session.refresh(jogo)
+        assert jogo.gols_casa == 2 and jogo.gols_visitante == 1
+
+        # 2) Evento ao vivo agora sem gols (None) — não deve zerar o placar
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_ao_vivo("MEX", "RSA", None, None)],
+        ):
+            sincronizar_resultados(db_session, _AGORA)
+        db_session.refresh(jogo)
+        assert jogo.gols_casa == 2, "placar não deve ser sobrescrito com None"
+        assert jogo.gols_visitante == 1
+
     def test_ao_vivo_depois_encerra_e_pontua(self, db_session: Session) -> None:
         """Após ao vivo, quando o evento vira FULL_TIME, encerra e recalcula pontos."""
         _, jogo, _, palpite = _seed_base(db_session)  # palpite MEX 1×0
@@ -736,3 +763,148 @@ class TestIntervaloDinamico:
             disparar_sync_se_necessario(self._make_factory(db_session), _AGORA)
 
         mock_sync.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# ADR-001: throttle atômico (compare-and-set) e deadline na fase de escrita
+# ---------------------------------------------------------------------------
+
+
+class TestThrottleAtomico:
+    """O compare-and-set do slot evita fetches duplicados concorrentes."""
+
+    def test_so_um_request_reivindica_o_mesmo_snapshot(self, db_session: Session) -> None:
+        """Duas requisições com o mesmo snapshot: só a 1ª reivindica o slot."""
+        _get_or_create_sync_state(db_session, CHAVE_SYNC)  # ultima_execucao = None
+
+        ganhou_a = _reivindicar_slot(db_session, None, _AGORA)
+        ganhou_b = _reivindicar_slot(db_session, None, _AGORA)
+
+        assert ganhou_a is True
+        assert ganhou_b is False
+
+    def test_avanco_normal_reivindica(self, db_session: Session) -> None:
+        """Lendo o valor atual, a próxima execução avança o slot normalmente."""
+        from datetime import timedelta
+
+        estado = _get_or_create_sync_state(db_session, CHAVE_SYNC)
+        assert _reivindicar_slot(db_session, None, _AGORA) is True
+
+        db_session.refresh(estado)
+        assert (
+            _reivindicar_slot(db_session, estado.ultima_execucao, _AGORA + timedelta(minutes=20))
+            is True
+        )
+
+
+class TestDeadline:
+    """O orçamento de tempo (deadline) é respeitado no fetch e na escrita."""
+
+    def test_deadline_ja_estourado_nao_busca_nem_lanca(self, db_session: Session) -> None:
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        mock_buscar = MagicMock(return_value=[_evento_encerrado("MEX", "RSA", 2, 0)])
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela", mock_buscar
+        ), patch("app.services.sync_resultados.time.monotonic", return_value=1000.0):
+            resumo = sincronizar_resultados(db_session, _AGORA, deadline=10.0)
+
+        mock_buscar.assert_not_called()
+        assert resumo.lancados == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_AGENDADO
+
+    def test_deadline_estoura_na_escrita_nao_lanca(self, db_session: Session) -> None:
+        """Fetch dentro do prazo, mas o deadline estoura antes de escrever → não lança."""
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        # monotonic: passo 4 (fetch) dentro do prazo; passos 5/5b (escrita) estourados.
+        monot = MagicMock(side_effect=[0.0, 1000.0, 1000.0, 1000.0, 1000.0])
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_encerrado("MEX", "RSA", 2, 0)],
+        ), patch("app.services.sync_resultados.time.monotonic", monot):
+            resumo = sincronizar_resultados(db_session, _AGORA, deadline=10.0)
+
+        assert resumo.lancados == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_AGENDADO
+
+
+# ---------------------------------------------------------------------------
+# MÉDIA: jogo "preso" ao vivo (ESPN parou de reportar) é revertido p/ agendado
+# ---------------------------------------------------------------------------
+
+
+class TestJogoPresoAoVivo:
+    def _seed_jogo_ao_vivo(self, db: Session, data_hora: datetime) -> Jogo:
+        rodada = Rodada(nome="Rodada 1", ordem=1, aberta=False)
+        db.add(rodada)
+        db.flush()
+        jogo = Jogo(
+            rodada_id=rodada.id,
+            data_hora=data_hora,
+            time_casa="México",
+            time_visitante="África do Sul",
+            status=STATUS_EM_ANDAMENTO,
+            gols_casa=1,
+            gols_visitante=0,
+        )
+        db.add(jogo)
+        _seed_alias(db, "MEX", "México")
+        _seed_alias(db, "RSA", "África do Sul")
+        db.commit()
+        return jogo
+
+    def test_reverte_quando_espn_nao_reporta_mais(self, db_session: Session) -> None:
+        """Ao vivo há 6h e a ESPN não reporta → volta p/ agendado, sem placar."""
+        from datetime import timedelta
+
+        jogo = self._seed_jogo_ao_vivo(db_session, _AGORA - timedelta(hours=6))
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela", return_value=[]
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.revertidos_presos == 1
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_AGENDADO
+        assert jogo.gols_casa is None
+        assert jogo.gols_visitante is None
+
+    def test_nao_reverte_jogo_recente(self, db_session: Session) -> None:
+        """Ao vivo há só 1h (dentro do limite) → não reverte."""
+        from datetime import timedelta
+
+        jogo = self._seed_jogo_ao_vivo(db_session, _AGORA - timedelta(hours=1))
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela", return_value=[]
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.revertidos_presos == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_EM_ANDAMENTO
+
+    def test_nao_reverte_se_espn_ainda_reporta_ao_vivo(self, db_session: Session) -> None:
+        """Ao vivo há 6h mas a ESPN AINDA reporta ao vivo → mantém (atualiza)."""
+        from datetime import timedelta
+
+        jogo = self._seed_jogo_ao_vivo(db_session, _AGORA - timedelta(hours=6))
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_ao_vivo("MEX", "RSA", 2, 1)],
+        ):
+            resumo = sincronizar_resultados(db_session, _AGORA)
+
+        assert resumo.revertidos_presos == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_EM_ANDAMENTO
+        assert jogo.gols_casa == 2
+        assert jogo.gols_visitante == 1

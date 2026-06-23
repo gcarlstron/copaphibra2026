@@ -9,7 +9,7 @@ Covers:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +20,7 @@ from app.services.auth import hash_senha
 from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO
 from app.services.prazo import rodada_aberta_para_edicao
 from app.services.scoring import calcular_pontos
+from app.services.tempo import agora as agora_dados
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,7 @@ class UsuarioAdminView:
 
 def listar_rodadas(db: Session) -> list[RodadaAdminView]:
     """Returns all rounds with calculated open-for-edit state and game count."""
-    agora = datetime.now(timezone.utc)
+    agora = agora_dados()
 
     stmt = select(
         Rodada.id,
@@ -217,6 +218,11 @@ def criar_jogo(
         status=STATUS_AGENDADO,
     )
     db.add(jogo)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Já existe um jogo com esses times nesta rodada.")
     db.commit()
     db.refresh(jogo)
     return jogo
@@ -237,6 +243,11 @@ def atualizar_jogo(
     jogo.data_hora = data_hora
     jogo.time_casa = time_casa.strip()
     jogo.time_visitante = time_visitante.strip()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Já existe um jogo com esses times nesta rodada.")
     db.commit()
     db.refresh(jogo)
     return jogo

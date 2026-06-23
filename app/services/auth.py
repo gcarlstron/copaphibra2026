@@ -9,19 +9,36 @@ from app.models import Usuario
 # do formulário em templates/trocar_senha.html).
 SENHA_MIN_LENGTH = 6
 
+# Limite do bcrypt: senhas com mais de 72 bytes são rejeitadas pela lib (em vez
+# de truncadas silenciosamente). Validamos antes para dar um erro amigável.
+SENHA_MAX_BYTES = 72
+
 
 def hash_senha(senha: str) -> str:
     """Gera o hash bcrypt da senha (formato ``$2b$``, compatível com hashes legados).
 
     Usa a lib ``bcrypt`` diretamente — o ``passlib`` foi removido por ser incompatível
     com Python 3.13+ e disparar avisos com bcrypt >= 4.1.
+
+    Levanta ``ValueError`` se a senha exceder ``SENHA_MAX_BYTES`` bytes (limite do bcrypt).
     """
+    if len(senha.encode("utf-8")) > SENHA_MAX_BYTES:
+        raise ValueError(f"A senha não pode ter mais de {SENHA_MAX_BYTES} bytes.")
     return bcrypt.hashpw(senha.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verificar_senha(senha: str, senha_hash: str) -> bool:
-    """Verifica a senha contra o hash bcrypt armazenado."""
-    return bcrypt.checkpw(senha.encode("utf-8"), senha_hash.encode("utf-8"))
+    """Verifica a senha contra o hash bcrypt armazenado.
+
+    Retorna ``False`` (em vez de propagar) quando o hash está malformado/vazio
+    (ex.: dado legado ou corrompido) ou a senha excede o limite do bcrypt — nesses
+    casos a lib levanta ``ValueError``. Assim um login com hash inválido vira 401,
+    não 500.
+    """
+    try:
+        return bcrypt.checkpw(senha.encode("utf-8"), senha_hash.encode("utf-8"))
+    except ValueError:
+        return False
 
 
 def alterar_senha(
@@ -41,6 +58,9 @@ def alterar_senha(
 
     if len(nova_senha) < SENHA_MIN_LENGTH:
         raise ValueError(f"A nova senha deve ter pelo menos {SENHA_MIN_LENGTH} caracteres.")
+
+    if len(nova_senha.encode("utf-8")) > SENHA_MAX_BYTES:
+        raise ValueError(f"A nova senha não pode ter mais de {SENHA_MAX_BYTES} bytes.")
 
     if nova_senha != confirmacao:
         raise ValueError("A confirmação não corresponde à nova senha.")

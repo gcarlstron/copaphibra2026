@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +10,7 @@ from app.models import Jogo, Palpite, Rodada, Usuario
 from app.models.team_alias import TeamAlias
 from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO  # noqa: F401 (re-exported for callers)
 from app.services.prazo import palpites_de_terceiros_visiveis
+from app.services.tempo import agora as agora_dados
 
 
 @dataclass(slots=True)
@@ -85,7 +86,7 @@ def detalhe_do_jogo(
     visíveis depois que a rodada fecha — delegado a palpites_de_terceiros_visiveis.
     Fase 11b: inclui escudo_casa e escudo_visitante via lookup em team_alias.
     """
-    momento_atual = agora or datetime.now(timezone.utc)
+    momento_atual = agora or agora_dados()
 
     # Alias para o LEFT JOIN duplo em team_alias (casa e visitante).
     ta_casa = TeamAlias.__table__.alias("ta_casa")

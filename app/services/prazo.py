@@ -42,6 +42,20 @@ def palpites_de_terceiros_visiveis(
     fechamento: datetime | None,
     agora: datetime,
 ) -> bool:
+    """Os palpites de TODOS ficam visíveis só depois que a rodada fecha (Regra #4).
+
+    - Rodada aberta para edição agora → False (sigilo durante a janela).
+    - Com `fechamento` definido → True só quando `agora` passou do fechamento.
+    - Sem `fechamento` (janela aberta) → revela quando `aberta=False`.
+
+    O caso `aberta=False, fechamento=None → True` é **intencional**: cobre as
+    rodadas importadas/encerradas (a carga inicial grava `aberta=False` sem
+    janela) e precisa liberar os palpites de todos. Uma rodada NOVA, criada pelo
+    admin e ainda não aberta, também cai aqui — mas é **seguro**: `salvar_palpite`
+    revalida `rodada_aberta_para_edicao`, então uma rodada que nunca foi aberta
+    não tem palpite de ninguém para vazar (não há o que revelar). Operacional: ao
+    montar uma rodada nova, abra-a antes de divulgar o link do detalhe do jogo.
+    """
     abertura_normalizada = _normalizar_datetime(abertura)
     fechamento_normalizado = _normalizar_datetime(fechamento)
     agora_normalizado = _normalizar_datetime(agora)

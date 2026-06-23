@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
+from unittest.mock import patch
 
 import httpx2 as httpx
 import pytest
@@ -17,6 +18,7 @@ from app.services.espn import (
     EspnClientError,
     EventoEspn,
     buscar_scoreboard,
+    buscar_scoreboard_com_janela,
     parse_eventos,
 )
 
@@ -260,3 +262,49 @@ class TestBuscarScoreboard:
         transport = httpx.MockTransport(handler)
         with pytest.raises(EspnClientError):
             buscar_scoreboard(date(2026, 6, 11), _transport=transport)
+
+
+# ---------------------------------------------------------------------------
+# buscar_scoreboard_com_janela — janela D-1/D/D+1 e deadline (ADR-001 / Fase 16)
+# ---------------------------------------------------------------------------
+
+
+class TestBuscarScoreboardComJanela:
+    def test_busca_as_tres_datas_sem_deadline(self) -> None:
+        """Sem deadline, consulta D-1, D e D+1 (nessa ordem)."""
+        chamadas: list[date] = []
+
+        def fake_buscar(d: date, timeout_s=None, _transport=None) -> list[EventoEspn]:
+            chamadas.append(d)
+            return []
+
+        with patch("app.services.espn.buscar_scoreboard", side_effect=fake_buscar):
+            buscar_scoreboard_com_janela(date(2026, 6, 11))
+
+        assert chamadas == [date(2026, 6, 10), date(2026, 6, 11), date(2026, 6, 12)]
+
+    def test_para_no_meio_da_janela_quando_deadline_estoura(self) -> None:
+        """Deadline estourado na 2ª data → para no meio (só D-1 é consultada)."""
+        chamadas: list[date] = []
+
+        def fake_buscar(d: date, timeout_s=None, _transport=None) -> list[EventoEspn]:
+            chamadas.append(d)
+            return [
+                EventoEspn(
+                    abrev_casa="MEX",
+                    abrev_visitante="RSA",
+                    gols_casa=1,
+                    gols_visitante=0,
+                    status=ESPN_STATUS_FULL_TIME,
+                    encerrado=True,
+                )
+            ]
+
+        # monotonic: 1ª iteração dentro do prazo (0.0 < 10); 2ª já estourada (100 > 10).
+        with patch(
+            "app.services.espn.buscar_scoreboard", side_effect=fake_buscar
+        ), patch("app.services.espn.time.monotonic", side_effect=[0.0, 100.0, 100.0]):
+            eventos = buscar_scoreboard_com_janela(date(2026, 6, 11), deadline=10.0)
+
+        assert chamadas == [date(2026, 6, 10)]
+        assert len(eventos) == 1

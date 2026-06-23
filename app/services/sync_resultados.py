@@ -37,11 +37,11 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -50,8 +50,10 @@ from app.models.sync_state import SyncState
 from app.models.team_alias import TeamAlias
 from app.services.admin import lancar_resultado
 from app.services.dashboard import (
-    STATUS_ENCERRADO,
+    STATUS_AGENDADO,
+    STATUS_AO_VIVO,
     STATUS_EM_ANDAMENTO,
+    STATUS_ENCERRADO,
     STATUS_INTERVALO,
 )
 from app.services.espn import (
@@ -68,6 +70,11 @@ CHAVE_SYNC = "espn_resultados"
 # para decidir o intervalo de throttle (busca rápida durante jogos ao vivo).
 _JANELA_JOGO_AO_VIVO_H = 3
 
+# Após este tempo (horas) do início, um jogo ainda marcado "ao vivo" que a ESPN
+# não reporta mais é considerado PRESO e revertido para "agendado" (um jogo dura
+# ~2h; 5h é folga suficiente para não pegar um jogo legítimo em andamento).
+_LIMITE_AO_VIVO_PRESO_H = 5
+
 
 @dataclass(slots=True)
 class ResumoSync:
@@ -75,6 +82,7 @@ class ResumoSync:
 
     lancados: int = 0
     atualizados_ao_vivo: int = 0
+    revertidos_presos: int = 0
     ignorados_sem_depara: int = 0
     ignorados_sem_jogo: int = 0
 
@@ -155,6 +163,11 @@ def sincronizar_resultados(
     # 5. Para cada data, monta o índice de encerrados e cruza com jogos pendentes.
     #    Cada data é buscada exatamente uma vez (ver passo 4 acima).
     for data_alvo, jogos_do_dia in jogos_por_data.items():
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.warning(
+                "Deadline do sync atingido na fase de escrita; resultados parciais."
+            )
+            break
         eventos = eventos_por_data[data_alvo]
 
         # Monta índice de eventos encerrados por (nome_casa, nome_visitante)
@@ -227,7 +240,13 @@ def sincronizar_resultados(
     # 5b. Atualiza status/placar de jogos AO VIVO (em andamento / intervalo).
     #     NÃO pontua — só lancar_resultado (FULL_TIME) recalcula Palpite.pontos.
     #     Reutiliza os eventos já materializados no passo 4.
+    ao_vivo_atualizados: set[int] = set()
     for data_alvo, jogos_do_dia in jogos_por_data.items():
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.warning(
+                "Deadline do sync atingido na atualização ao vivo; parcial."
+            )
+            break
         ao_vivo_idx: dict[tuple[str, str], EventoEspn] = {}
         for ev in eventos_por_data[data_alvo]:
             if not ev.ao_vivo:
@@ -248,27 +267,58 @@ def sincronizar_resultados(
                 continue
 
             novo_status = STATUS_INTERVALO if ev.no_intervalo else STATUS_EM_ANDAMENTO
+            # Não sobrescrever um placar já conhecido com None: a ESPN às vezes
+            # reporta o evento ao vivo sem os gols. Mantém o último placar bom.
+            novo_gols_casa = ev.gols_casa if ev.gols_casa is not None else jogo_atual.gols_casa
+            novo_gols_visitante = (
+                ev.gols_visitante if ev.gols_visitante is not None else jogo_atual.gols_visitante
+            )
             mudou = (
                 jogo_atual.status != novo_status
-                or jogo_atual.gols_casa != ev.gols_casa
-                or jogo_atual.gols_visitante != ev.gols_visitante
+                or jogo_atual.gols_casa != novo_gols_casa
+                or jogo_atual.gols_visitante != novo_gols_visitante
             )
             if not mudou:
                 continue
 
             jogo_atual.status = novo_status
-            jogo_atual.gols_casa = ev.gols_casa
-            jogo_atual.gols_visitante = ev.gols_visitante
+            jogo_atual.gols_casa = novo_gols_casa
+            jogo_atual.gols_visitante = novo_gols_visitante
             resumo.atualizados_ao_vivo += 1
+            ao_vivo_atualizados.add(jogo.id)
             logger.info(
                 "Jogo ao vivo atualizado: %s %s×%s %s (status=%s, jogo_id=%d)",
                 jogo.time_casa,
-                ev.gols_casa,
-                ev.gols_visitante,
+                novo_gols_casa,
+                novo_gols_visitante,
                 jogo.time_visitante,
                 novo_status,
                 jogo.id,
             )
+
+    # 5c. Reverte jogos "presos" ao vivo: marcados em andamento/intervalo há mais
+    #     de _LIMITE_AO_VIVO_PRESO_H horas e que a ESPN NÃO reportou ao vivo nesta
+    #     execução (parou de cobri-los). Volta para "agendado" sem placar, para não
+    #     ficarem eternamente "ao vivo" no dashboard; a próxima sync tenta resolver
+    #     o resultado de novo (segue pendente). Não toca nos que a ESPN ainda
+    #     reporta ao vivo agora (ficaram em ao_vivo_atualizados).
+    limite_preso = agora - timedelta(hours=_LIMITE_AO_VIVO_PRESO_H)
+    presos = db.scalars(
+        select(Jogo).where(
+            Jogo.status.in_(STATUS_AO_VIVO),
+            Jogo.data_hora <= limite_preso,
+        )
+    ).all()
+    for jogo_preso in presos:
+        if jogo_preso.id in ao_vivo_atualizados:
+            continue
+        jogo_preso.status = STATUS_AGENDADO
+        jogo_preso.gols_casa = None
+        jogo_preso.gols_visitante = None
+        resumo.revertidos_presos += 1
+        logger.warning(
+            "Jogo ao vivo preso revertido para 'agendado': jogo_id=%d", jogo_preso.id
+        )
 
     db.commit()
 
@@ -314,6 +364,31 @@ def _get_or_create_sync_state(db: Session, chave: str) -> SyncState:
         db.commit()
         db.refresh(estado)
     return estado
+
+
+def _reivindicar_slot(
+    db: Session, valor_lido: datetime | None, agora_utc: datetime
+) -> bool:
+    """Compare-and-set atômico de ``SyncState.ultima_execucao``.
+
+    Avança ``ultima_execucao`` para ``agora_utc`` somente se a coluna ainda for
+    ``valor_lido`` (o valor lido antes). Como é um único ``UPDATE ... WHERE`` (o
+    banco serializa updates concorrentes na mesma linha), apenas UMA requisição
+    "ganha" o slot — as demais recebem ``rowcount == 0``. Evita fetches
+    duplicados à ESPN quando várias abas disparam o sync quase ao mesmo tempo
+    (auto-refresh durante jogo ao vivo). Retorna True se reivindicou o slot.
+    """
+    if valor_lido is None:
+        condicao = SyncState.ultima_execucao.is_(None)
+    else:
+        condicao = SyncState.ultima_execucao == valor_lido
+    resultado = db.execute(
+        update(SyncState)
+        .where(SyncState.chave == CHAVE_SYNC, condicao)
+        .values(ultima_execucao=agora_utc)
+    )
+    db.commit()
+    return resultado.rowcount == 1
 
 
 def _ha_jogo_ao_vivo_ou_iminente(db: Session, agora: datetime) -> bool:
@@ -372,14 +447,18 @@ def sincronizar_se_necessario(
 
     estado = _get_or_create_sync_state(db, CHAVE_SYNC)
 
-    # Throttle: respeita a janela mínima
+    # Throttle: respeita a janela mínima (decisão em Python, robusta a tz/naive).
     if estado.ultima_execucao is not None:
         ultima = estado.ultima_execucao
         # Normaliza para UTC se tiver tzinfo
         if ultima.tzinfo is None:
             ultima = ultima.replace(tzinfo=timezone.utc)
         diferenca = agora_utc - ultima
-        if diferenca < timedelta(minutes=intervalo_min):
+        # Só faz throttle dentro da janela "para frente". Diferença negativa
+        # (ex.: ultima_execucao gravada na convenção de fuso antiga logo após o
+        # deploy do ADR-002, ou skew de relógio) → executa, em vez de ficar preso
+        # achando que rodou "no futuro".
+        if timedelta(0) <= diferenca < timedelta(minutes=intervalo_min):
             logger.debug(
                 "Sync ESPN throttled: última execução há %.1f min (intervalo=%d min).",
                 diferenca.total_seconds() / 60,
@@ -387,16 +466,21 @@ def sincronizar_se_necessario(
             )
             return False
 
-    # Grava timestamp ANTES de chamar a ESPN (evita corrida)
-    estado.ultima_execucao = agora_utc
-    db.commit()
+    # Reivindica o slot ANTES de chamar a ESPN, de forma atômica (compare-and-set):
+    # grava ultima_execucao só se ela ainda for o valor lido acima. Em acessos
+    # simultâneos (várias abas no auto-refresh durante um jogo ao vivo), só UMA
+    # requisição vence — as demais saem aqui, evitando fetches duplicados.
+    if not _reivindicar_slot(db, estado.ultima_execucao, agora_utc):
+        logger.debug("Sync ESPN: slot já reivindicado por outra requisição; pulando.")
+        return False
 
     logger.info("Iniciando sincronização de resultados ESPN.")
     resumo = sincronizar_resultados(db, agora_utc, deadline=deadline)
     logger.info(
-        "Sync ESPN concluído: %d lançados, %d ao vivo, %d sem de-para, %d sem jogo.",
+        "Sync ESPN concluído: %d lançados, %d ao vivo, %d revertidos, %d sem de-para, %d sem jogo.",
         resumo.lancados,
         resumo.atualizados_ao_vivo,
+        resumo.revertidos_presos,
         resumo.ignorados_sem_depara,
         resumo.ignorados_sem_jogo,
     )

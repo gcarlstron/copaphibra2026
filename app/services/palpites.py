@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.models import Jogo, Palpite, Rodada, Usuario
 from app.services.prazo import rodada_aberta_para_edicao
+from app.services.tempo import agora as agora_dados
 
 
 @dataclass(slots=True)
@@ -33,7 +34,7 @@ class RodadaPalpitesView:
 
 
 def listar_palpites_do_usuario(db: Session, usuario: Usuario, agora: datetime | None = None) -> list[RodadaPalpitesView]:
-    momento_atual = agora or datetime.now(timezone.utc)
+    momento_atual = agora or agora_dados()
     stmt = (
         select(Jogo, Rodada, Palpite)
         .join(Rodada, Jogo.rodada_id == Rodada.id)
@@ -86,7 +87,7 @@ def salvar_palpite(
     gols_visitante: int,
     agora: datetime | None = None,
 ) -> Palpite:
-    momento_atual = agora or datetime.now(timezone.utc)
+    momento_atual = agora or agora_dados()
 
     if gols_casa < 0 or gols_visitante < 0:
         raise ValueError("Placar inválido: gols não podem ser negativos")
