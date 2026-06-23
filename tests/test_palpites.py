@@ -135,7 +135,8 @@ def test_listar_palpites_rodada_fechada_com_fechamento_naive_nao_levanta_excecao
 
     When a round is closed (aberta=False) and fechamento is a naive datetime
     (as returned by SQLite), listar_palpites_do_usuario must NOT raise TypeError
-    and must return terceiros_visiveis=True.
+    (GET /palpites returns 200). A normalização do naive vive em
+    rodada_aberta_para_edicao.
     """
     usuario = _seed_user(db_session)
 
