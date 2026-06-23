@@ -237,7 +237,13 @@ def atualizar_jogo(
         dt = _parse_data_hora(data_hora)
         admin_svc.atualizar_jogo(db, jogo_id=jogo_id, data_hora=dt, time_casa=time_casa, time_visitante=time_visitante)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        msg = str(exc)
+        http_status = (
+            status.HTTP_404_NOT_FOUND
+            if "não encontrad" in msg
+            else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=http_status, detail=msg) from exc
 
     return _redirect_or_htmx(request, "/admin/jogos")
 

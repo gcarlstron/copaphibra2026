@@ -217,6 +217,11 @@ def criar_jogo(
         status=STATUS_AGENDADO,
     )
     db.add(jogo)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Já existe um jogo com esses times nesta rodada.")
     db.commit()
     db.refresh(jogo)
     return jogo
@@ -237,6 +242,11 @@ def atualizar_jogo(
     jogo.data_hora = data_hora
     jogo.time_casa = time_casa.strip()
     jogo.time_visitante = time_visitante.strip()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("Já existe um jogo com esses times nesta rodada.")
     db.commit()
     db.refresh(jogo)
     return jogo

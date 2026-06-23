@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
@@ -248,23 +248,29 @@ def sincronizar_resultados(
                 continue
 
             novo_status = STATUS_INTERVALO if ev.no_intervalo else STATUS_EM_ANDAMENTO
+            # Não sobrescrever um placar já conhecido com None: a ESPN às vezes
+            # reporta o evento ao vivo sem os gols. Mantém o último placar bom.
+            novo_gols_casa = ev.gols_casa if ev.gols_casa is not None else jogo_atual.gols_casa
+            novo_gols_visitante = (
+                ev.gols_visitante if ev.gols_visitante is not None else jogo_atual.gols_visitante
+            )
             mudou = (
                 jogo_atual.status != novo_status
-                or jogo_atual.gols_casa != ev.gols_casa
-                or jogo_atual.gols_visitante != ev.gols_visitante
+                or jogo_atual.gols_casa != novo_gols_casa
+                or jogo_atual.gols_visitante != novo_gols_visitante
             )
             if not mudou:
                 continue
 
             jogo_atual.status = novo_status
-            jogo_atual.gols_casa = ev.gols_casa
-            jogo_atual.gols_visitante = ev.gols_visitante
+            jogo_atual.gols_casa = novo_gols_casa
+            jogo_atual.gols_visitante = novo_gols_visitante
             resumo.atualizados_ao_vivo += 1
             logger.info(
                 "Jogo ao vivo atualizado: %s %s×%s %s (status=%s, jogo_id=%d)",
                 jogo.time_casa,
-                ev.gols_casa,
-                ev.gols_visitante,
+                novo_gols_casa,
+                novo_gols_visitante,
                 jogo.time_visitante,
                 novo_status,
                 jogo.id,

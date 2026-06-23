@@ -198,3 +198,54 @@ def test_trocar_senha_exige_login(client: TestClient) -> None:
     )
     assert post_resp.status_code == 303
     assert post_resp.headers["location"] == "/login"
+
+
+# ---------------------------------------------------------------------------
+# Robustez do hash (Fase 16): hash malformado e limite de 72 bytes do bcrypt
+# ---------------------------------------------------------------------------
+
+
+def test_verificar_senha_hash_malformado_retorna_false() -> None:
+    """Hash vazio/inválido não deve propagar exceção — retorna False."""
+    assert verificar_senha("qualquer", "") is False
+    assert verificar_senha("qualquer", "nao-e-um-hash-bcrypt") is False
+
+
+def test_login_hash_malformado_retorna_401(client: TestClient) -> None:
+    """Login com senha_hash corrompido vira 401, não 500."""
+    db = next(client.app.dependency_overrides[get_db]())
+    usuario = Usuario(
+        nome="Corrompido",
+        username="corrompido",
+        senha_hash="hash-legado-corrompido",
+        is_admin=False,
+        ativo=True,
+    )
+    db.add(usuario)
+    db.commit()
+
+    response = client.post("/login", data={"username": "corrompido", "senha": "qualquer"})
+    assert response.status_code == 401
+
+
+def test_hash_senha_rejeita_acima_de_72_bytes() -> None:
+    """bcrypt rejeita senhas > 72 bytes; damos um ValueError amigável."""
+    with pytest.raises(ValueError, match="72 bytes"):
+        hash_senha("a" * 73)
+
+
+def test_login_senha_muito_longa_retorna_401(client: TestClient) -> None:
+    """Senha > 72 bytes no login não derruba o servidor — vira 401."""
+    db = next(client.app.dependency_overrides[get_db]())
+    usuario = Usuario(
+        nome="Longa",
+        username="longa",
+        senha_hash=hash_senha("curta-123"),
+        is_admin=False,
+        ativo=True,
+    )
+    db.add(usuario)
+    db.commit()
+
+    response = client.post("/login", data={"username": "longa", "senha": "x" * 100})
+    assert response.status_code == 401

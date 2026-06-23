@@ -644,6 +644,32 @@ class TestAtualizacaoAoVivo:
         assert r1.atualizados_ao_vivo == 1
         assert r2.atualizados_ao_vivo == 0
 
+    def test_ao_vivo_nao_sobrescreve_placar_bom_com_none(self, db_session: Session) -> None:
+        """Evento ao vivo sem gols (None) não pode apagar um placar já conhecido."""
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        # 1) Ao vivo 2×1 — grava um placar bom
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_ao_vivo("MEX", "RSA", 2, 1)],
+        ):
+            sincronizar_resultados(db_session, _AGORA)
+        db_session.refresh(jogo)
+        assert jogo.gols_casa == 2 and jogo.gols_visitante == 1
+
+        # 2) Evento ao vivo agora sem gols (None) — não deve zerar o placar
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_ao_vivo("MEX", "RSA", None, None)],
+        ):
+            sincronizar_resultados(db_session, _AGORA)
+        db_session.refresh(jogo)
+        assert jogo.gols_casa == 2, "placar não deve ser sobrescrito com None"
+        assert jogo.gols_visitante == 1
+
     def test_ao_vivo_depois_encerra_e_pontua(self, db_session: Session) -> None:
         """Após ao vivo, quando o evento vira FULL_TIME, encerra e recalcula pontos."""
         _, jogo, _, palpite = _seed_base(db_session)  # palpite MEX 1×0

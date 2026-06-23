@@ -250,6 +250,48 @@ def test_editar_jogo_inexistente_retorna_404(client: TestClient, db_session: Ses
     assert resp.status_code == 404
 
 
+def test_criar_jogo_duplicado_retorna_400(client: TestClient, db_session: Session) -> None:
+    """Jogo duplicado (mesma rodada + times) → 400 amigável, não 500."""
+    _seed_usuario(db_session, "admin", is_admin=True)
+    rodada = _seed_rodada(db_session)
+    _seed_jogo(db_session, rodada, time_casa="Brasil", time_visitante="Argentina")
+    db_session.commit()
+    _login(client, "admin")
+
+    resp = client.post(
+        "/admin/jogos",
+        data={
+            "rodada_id": rodada.id,
+            "data_hora": "2026-06-20T18:00",
+            "time_casa": "Brasil",
+            "time_visitante": "Argentina",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+
+
+def test_editar_jogo_para_duplicado_retorna_400(client: TestClient, db_session: Session) -> None:
+    """Editar um jogo de forma a colidir com outro existente → 400 (não 404)."""
+    _seed_usuario(db_session, "admin", is_admin=True)
+    rodada = _seed_rodada(db_session)
+    _seed_jogo(db_session, rodada, time_casa="Brasil", time_visitante="Argentina")
+    outro = _seed_jogo(db_session, rodada, time_casa="Brasil", time_visitante="Chile")
+    db_session.commit()
+    _login(client, "admin")
+
+    resp = client.post(
+        f"/admin/jogos/{outro.id}",
+        data={
+            "data_hora": "2026-06-21T18:00",
+            "time_casa": "Brasil",
+            "time_visitante": "Argentina",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+
+
 # ---------------------------------------------------------------------------
 # Lançar resultado e recálculo de pontos
 # ---------------------------------------------------------------------------
