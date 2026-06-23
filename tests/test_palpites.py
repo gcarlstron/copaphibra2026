@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -12,6 +12,7 @@ from app.database import Base, get_db
 from app.main import create_app
 from app.models import Jogo, Palpite, Rodada, Usuario
 from app.services.auth import hash_senha
+from app.services.tempo import agora as agora_dados
 
 
 @pytest.fixture()
@@ -50,7 +51,7 @@ def _seed_user(db_session: Session) -> Usuario:
 
 
 def _seed_round_and_game(db_session: Session, aberta: bool = True, fechamento_delta: timedelta | None = None) -> Jogo:
-    agora = datetime.now(timezone.utc)
+    agora = agora_dados()
     rodada = Rodada(
         nome="1ª Rodada",
         ordem=1,

@@ -9,7 +9,7 @@ Covers:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +20,7 @@ from app.services.auth import hash_senha
 from app.services.dashboard import STATUS_AGENDADO, STATUS_ENCERRADO
 from app.services.prazo import rodada_aberta_para_edicao
 from app.services.scoring import calcular_pontos
+from app.services.tempo import agora as agora_dados
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,7 @@ class UsuarioAdminView:
 
 def listar_rodadas(db: Session) -> list[RodadaAdminView]:
     """Returns all rounds with calculated open-for-edit state and game count."""
-    agora = datetime.now(timezone.utc)
+    agora = agora_dados()
 
     stmt = select(
         Rodada.id,

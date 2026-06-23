@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
@@ -11,6 +9,7 @@ from app.config import get_settings
 from app.database import get_db
 from app.routers.auth import get_current_user
 from app.services.palpites import listar_palpites_do_usuario, salvar_palpite
+from app.services.tempo import agora as agora_dados
 
 router = APIRouter(prefix="/palpites")
 
@@ -64,7 +63,7 @@ def salvar_meu_palpite(
             jogo_id=jogo_id,
             gols_casa=gols_casa,
             gols_visitante=gols_visitante,
-            agora=datetime.now(timezone.utc),
+            agora=agora_dados(),
         )
     except LookupError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

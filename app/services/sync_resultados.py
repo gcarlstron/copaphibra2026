@@ -385,7 +385,11 @@ def sincronizar_se_necessario(
         if ultima.tzinfo is None:
             ultima = ultima.replace(tzinfo=timezone.utc)
         diferenca = agora_utc - ultima
-        if diferenca < timedelta(minutes=intervalo_min):
+        # Só faz throttle dentro da janela "para frente". Diferença negativa
+        # (ex.: ultima_execucao gravada na convenção de fuso antiga logo após o
+        # deploy do ADR-002, ou skew de relógio) → executa, em vez de ficar preso
+        # achando que rodou "no futuro".
+        if timedelta(0) <= diferenca < timedelta(minutes=intervalo_min):
             logger.debug(
                 "Sync ESPN throttled: última execução há %.1f min (intervalo=%d min).",
                 diferenca.total_seconds() / 60,

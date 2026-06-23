@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -14,6 +13,7 @@ from app.database import get_db
 from app.routers.auth import get_current_user
 from app.services.dashboard import montar_dashboard
 from app.services.sync_resultados import sincronizar_se_necessario
+from app.services.tempo import agora as agora_dados
 
 logger = logging.getLogger(__name__)
 
@@ -46,14 +46,14 @@ def dashboard(
     # se a ESPN estiver lenta/fora, a página renderiza com os dados do banco.
     deadline = time.monotonic() + settings.espn_sync_deadline_s
     try:
-        sincronizar_se_necessario(db, datetime.now(timezone.utc), deadline=deadline)
+        sincronizar_se_necessario(db, agora_dados(), deadline=deadline)
     except Exception:
         logger.exception(
             "Sync ESPN síncrono falhou; renderizando o dashboard com os dados existentes."
         )
 
     templates = _templates()
-    dados = montar_dashboard(db, agora=datetime.now(timezone.utc))
+    dados = montar_dashboard(db, agora=agora_dados())
 
     return templates.TemplateResponse(
         request,

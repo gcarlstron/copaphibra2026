@@ -10,6 +10,7 @@ from app.models import Jogo, Palpite, Rodada, Usuario
 from app.models.sync_state import SyncState
 from app.services.prazo import rodada_aberta_para_edicao
 from app.services.ranking import chave_de_ranking, contar_buckets_de_pontos
+from app.services.tempo import agora as agora_dados
 
 # Status values used in Jogo.status (plain strings, no enum in the schema).
 STATUS_ENCERRADO = "encerrado"
@@ -316,7 +317,7 @@ def _descrever_ultima_sync(quando: datetime | None, agora: datetime) -> str | No
 
 def montar_dashboard(db: Session, agora: datetime | None = None) -> DashboardData:
     """Agrega todos os dados necessários para a tela de dashboard/classificação."""
-    momento_atual = agora or datetime.now(timezone.utc)
+    momento_atual = agora or agora_dados()
     ultima_sync = _obter_ultima_sync(db)
     return DashboardData(
         classificacao=_montar_classificacao(db, momento_atual),
