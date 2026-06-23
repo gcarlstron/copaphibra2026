@@ -281,18 +281,18 @@ Abordagem (parametrizada por **classe**, decidida com o usuário 2026-06-22):
 
 ## Fase 15 — Follow-ups técnicos/QA (em andamento — branch `chore/follow-ups-qa`)
 
-Branch criada a partir da `main` pós-deploy. **1º commit feito:** `fix:` removendo o recolhível
-de "Últimos resultados"/"Próximos jogos" (ajuste do usuário, sobe junto com a PR desta fase).
-Branch **local, ainda não pushed**. Itens pendentes (paramos aqui em 2026-06-22 para retomar depois):
+Branch `chore/follow-ups-qa` (a partir da `main` pós-deploy). Inclui também o ajuste dos cards
+(commit `fix:`). Branch **local, ainda não pushed** (PR ao final). **212 testes.**
 
-- [ ] **Cache-busting dos estáticos (prioritário):** anexar versão na URL de `app.css`/`ui.js` no `base.html` (ex.: `?v={{ asset_version }}` derivado de `RENDER_GIT_COMMIT`, ou hash/mtime), para **todo deploy invalidar o cache do navegador**. Motivo: no deploy do `b2436ee` o navegador serviu `app.css` antigo e o recolher só funcionou após hard refresh. Sem isso, recorre a cada deploy.
-- [ ] **Importador idempotente na senha:** `scripts/importar_planilha.py::_get_or_create_usuario` reaplica `senha_hash` a cada execução — **não** resetar a senha de quem já existe (só setar senha ao criar). Preserva a troca de senha dos jogadores. + testes (rodar 2x não muda hash existente; não-clobber do admin).
+- [x] ✅ **Cache-busting dos estáticos:** `?v={{ asset_version }}` em app.css/ui.js no `base.html`; `Settings.asset_version` = `RENDER_GIT_COMMIT[:12]` (prod, muda a cada deploy) ou mtime de app.css/ui.js (dev); global injetado no `_templates()` dos 5 routers → 2026-06-22
+- [x] ✅ **Importador idempotente na senha:** `_get_or_create_usuario` só seta `senha_hash` ao CRIAR; em existente atualiza só nome/ativo (preserva a senha trocada, não toca `is_admin`). + testes unit → 2026-06-22
+- [x] ✅ **Importador preserva jogos encerrados:** `_get_or_create_jogo` não sobrescreve jogo já ENCERRADO (resultado autoritativo, pode vir da ESPN/admin) → `protegido=True`; palpites desses jogos também não são reescritos (evita pontos divergentes). Rodadas já eram preservadas (só `nome` atualiza). + testes _(pedido do usuário)_ → 2026-06-22
+- [x] ✅ **Remover campo morto `terceiros_visiveis`** de `services/palpites.py`; regressão de timezone (`GET /palpites` com fechamento naive → 200) segue coberta por `rodada_aberta_para_edicao` → 2026-06-22
 - [ ] **`UniqueConstraint(rodada_id, time_casa, time_visitante)` em `Jogo`:** model + **nova migração Alembic** (e aplicar na Neon — passo de deploy). Atenção: duplicatas em prod fariam a migração falhar (improvável — importador é get-or-create).
-- [ ] **Remover campo morto `terceiros_visiveis`** de `services/palpites.py` (`JogoPalpiteView`/`RodadaPalpitesView`); não é usado no template. Ajustar o teste de regressão de timezone em `test_palpites.py` (hoje asserta nesse campo) para checar `aberta_para_edicao`/não-crash; remover o import de `palpites_de_terceiros_visiveis` se ficar sem uso.
 - [ ] **Type hints do importador:** trocar `object`/`# type: ignore` por `Worksheet`/`Session`/`Callable` em `importar_planilha.py`.
 - [ ] (Menor) filtrar `Usuario.ativo` no ramo do "próprio palpite" em `services/jogos.py` (inofensivo hoje).
 
-_Retomada: `git checkout chore/follow-ups-qa`; implementar os itens; rodar a suíte; push + PR (o commit `fix:` dos cards entra junto)._
+_Retomada: `git checkout chore/follow-ups-qa`; faltam UniqueConstraint (com migração) e type hints; rodar a suíte; push + PR._
 
 ## Backlog / Fase 2 (futuro)
 
