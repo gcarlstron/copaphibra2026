@@ -29,6 +29,7 @@ from app.services.sync_resultados import (
     CHAVE_SYNC,
     ResumoSync,
     _get_or_create_sync_state,
+    _reivindicar_slot,
     disparar_sync_se_necessario,
     sincronizar_resultados,
 )
@@ -762,3 +763,75 @@ class TestIntervaloDinamico:
             disparar_sync_se_necessario(self._make_factory(db_session), _AGORA)
 
         mock_sync.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# ADR-001: throttle atômico (compare-and-set) e deadline na fase de escrita
+# ---------------------------------------------------------------------------
+
+
+class TestThrottleAtomico:
+    """O compare-and-set do slot evita fetches duplicados concorrentes."""
+
+    def test_so_um_request_reivindica_o_mesmo_snapshot(self, db_session: Session) -> None:
+        """Duas requisições com o mesmo snapshot: só a 1ª reivindica o slot."""
+        _get_or_create_sync_state(db_session, CHAVE_SYNC)  # ultima_execucao = None
+
+        ganhou_a = _reivindicar_slot(db_session, None, _AGORA)
+        ganhou_b = _reivindicar_slot(db_session, None, _AGORA)
+
+        assert ganhou_a is True
+        assert ganhou_b is False
+
+    def test_avanco_normal_reivindica(self, db_session: Session) -> None:
+        """Lendo o valor atual, a próxima execução avança o slot normalmente."""
+        from datetime import timedelta
+
+        estado = _get_or_create_sync_state(db_session, CHAVE_SYNC)
+        assert _reivindicar_slot(db_session, None, _AGORA) is True
+
+        db_session.refresh(estado)
+        assert (
+            _reivindicar_slot(db_session, estado.ultima_execucao, _AGORA + timedelta(minutes=20))
+            is True
+        )
+
+
+class TestDeadline:
+    """O orçamento de tempo (deadline) é respeitado no fetch e na escrita."""
+
+    def test_deadline_ja_estourado_nao_busca_nem_lanca(self, db_session: Session) -> None:
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        mock_buscar = MagicMock(return_value=[_evento_encerrado("MEX", "RSA", 2, 0)])
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela", mock_buscar
+        ), patch("app.services.sync_resultados.time.monotonic", return_value=1000.0):
+            resumo = sincronizar_resultados(db_session, _AGORA, deadline=10.0)
+
+        mock_buscar.assert_not_called()
+        assert resumo.lancados == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_AGENDADO
+
+    def test_deadline_estoura_na_escrita_nao_lanca(self, db_session: Session) -> None:
+        """Fetch dentro do prazo, mas o deadline estoura antes de escrever → não lança."""
+        _, jogo, _, _ = _seed_base(db_session)
+        _seed_alias(db_session, "MEX", "México")
+        _seed_alias(db_session, "RSA", "África do Sul")
+        db_session.commit()
+
+        # monotonic: passo 4 (fetch) dentro do prazo; passos 5/5b (escrita) estourados.
+        monot = MagicMock(side_effect=[0.0, 1000.0, 1000.0, 1000.0, 1000.0])
+        with patch(
+            "app.services.sync_resultados.buscar_scoreboard_com_janela",
+            return_value=[_evento_encerrado("MEX", "RSA", 2, 0)],
+        ), patch("app.services.sync_resultados.time.monotonic", monot):
+            resumo = sincronizar_resultados(db_session, _AGORA, deadline=10.0)
+
+        assert resumo.lancados == 0
+        db_session.refresh(jogo)
+        assert jogo.status == STATUS_AGENDADO

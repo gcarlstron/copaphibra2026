@@ -41,7 +41,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -155,6 +155,11 @@ def sincronizar_resultados(
     # 5. Para cada data, monta o índice de encerrados e cruza com jogos pendentes.
     #    Cada data é buscada exatamente uma vez (ver passo 4 acima).
     for data_alvo, jogos_do_dia in jogos_por_data.items():
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.warning(
+                "Deadline do sync atingido na fase de escrita; resultados parciais."
+            )
+            break
         eventos = eventos_por_data[data_alvo]
 
         # Monta índice de eventos encerrados por (nome_casa, nome_visitante)
@@ -228,6 +233,11 @@ def sincronizar_resultados(
     #     NÃO pontua — só lancar_resultado (FULL_TIME) recalcula Palpite.pontos.
     #     Reutiliza os eventos já materializados no passo 4.
     for data_alvo, jogos_do_dia in jogos_por_data.items():
+        if deadline is not None and time.monotonic() >= deadline:
+            logger.warning(
+                "Deadline do sync atingido na atualização ao vivo; parcial."
+            )
+            break
         ao_vivo_idx: dict[tuple[str, str], EventoEspn] = {}
         for ev in eventos_por_data[data_alvo]:
             if not ev.ao_vivo:
@@ -322,6 +332,31 @@ def _get_or_create_sync_state(db: Session, chave: str) -> SyncState:
     return estado
 
 
+def _reivindicar_slot(
+    db: Session, valor_lido: datetime | None, agora_utc: datetime
+) -> bool:
+    """Compare-and-set atômico de ``SyncState.ultima_execucao``.
+
+    Avança ``ultima_execucao`` para ``agora_utc`` somente se a coluna ainda for
+    ``valor_lido`` (o valor lido antes). Como é um único ``UPDATE ... WHERE`` (o
+    banco serializa updates concorrentes na mesma linha), apenas UMA requisição
+    "ganha" o slot — as demais recebem ``rowcount == 0``. Evita fetches
+    duplicados à ESPN quando várias abas disparam o sync quase ao mesmo tempo
+    (auto-refresh durante jogo ao vivo). Retorna True se reivindicou o slot.
+    """
+    if valor_lido is None:
+        condicao = SyncState.ultima_execucao.is_(None)
+    else:
+        condicao = SyncState.ultima_execucao == valor_lido
+    resultado = db.execute(
+        update(SyncState)
+        .where(SyncState.chave == CHAVE_SYNC, condicao)
+        .values(ultima_execucao=agora_utc)
+    )
+    db.commit()
+    return resultado.rowcount == 1
+
+
 def _ha_jogo_ao_vivo_ou_iminente(db: Session, agora: datetime) -> bool:
     """True se há jogo ao vivo (em andamento/intervalo) ou agendado já iniciado há pouco.
 
@@ -378,7 +413,7 @@ def sincronizar_se_necessario(
 
     estado = _get_or_create_sync_state(db, CHAVE_SYNC)
 
-    # Throttle: respeita a janela mínima
+    # Throttle: respeita a janela mínima (decisão em Python, robusta a tz/naive).
     if estado.ultima_execucao is not None:
         ultima = estado.ultima_execucao
         # Normaliza para UTC se tiver tzinfo
@@ -397,9 +432,13 @@ def sincronizar_se_necessario(
             )
             return False
 
-    # Grava timestamp ANTES de chamar a ESPN (evita corrida)
-    estado.ultima_execucao = agora_utc
-    db.commit()
+    # Reivindica o slot ANTES de chamar a ESPN, de forma atômica (compare-and-set):
+    # grava ultima_execucao só se ela ainda for o valor lido acima. Em acessos
+    # simultâneos (várias abas no auto-refresh durante um jogo ao vivo), só UMA
+    # requisição vence — as demais saem aqui, evitando fetches duplicados.
+    if not _reivindicar_slot(db, estado.ultima_execucao, agora_utc):
+        logger.debug("Sync ESPN: slot já reivindicado por outra requisição; pulando.")
+        return False
 
     logger.info("Iniciando sincronização de resultados ESPN.")
     resumo = sincronizar_resultados(db, agora_utc, deadline=deadline)
