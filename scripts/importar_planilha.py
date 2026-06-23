@@ -10,7 +10,11 @@ Uso:
     SENHA_PADRAO  senha provisória para os 10 jogadores (padrão: copaphibra2026).
 
 Idempotente: re-executar não duplica registros — get-or-create em tudo.
-O usuário admin pré-existente (criado por scripts/criar_admin.py) não é tocado.
+Jogos já ENCERRADOS (e suas pontuações) são preservados, não sobrescritos — o
+resultado no banco é autoritativo (pode ter vindo da ESPN/admin). A senha de
+usuários já existentes também é preservada. O estado de palpite das rodadas
+(aberta/janela) nunca é alterado no re-import. O usuário admin pré-existente
+(criado por scripts/criar_admin.py) não é tocado.
 
 Requisitos:
     pip install openpyxl
@@ -21,7 +25,7 @@ from __future__ import annotations
 import sys
 from datetime import date, datetime, time, timezone
 from pathlib import Path
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 # ---------------------------------------------------------------------------
 # Bootstrap de sys.path para permitir ``import app...`` ao rodar diretamente.
@@ -31,7 +35,9 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 # Após o path bootstrap, as importações do app ficam disponíveis.
 import openpyxl  # noqa: E402
+from openpyxl.worksheet.worksheet import Worksheet  # noqa: E402
 from sqlalchemy import select  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
 from app.models import Jogo, Palpite, Rodada, Usuario  # noqa: E402
@@ -141,11 +147,11 @@ def _combinar_data_hora(data_cell: object, hora_cell: object) -> datetime:
     return datetime(d.year, d.month, d.day, h.hour, h.minute, tzinfo=timezone.utc)
 
 
-def ler_oficial(ws: object) -> list[LinhaOficial]:
+def ler_oficial(ws: Worksheet) -> list[LinhaOficial]:
     """Lê as linhas 2–73 da aba OFICIAL e retorna LinhaOficial por linha."""
     linhas: list[LinhaOficial] = []
     for r in range(LINHA_INICIO, LINHA_FIM + 1):
-        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=7, values_only=True))[0]  # type: ignore[union-attr]
+        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=7, values_only=True))[0]
         # Colunas: A=0 B=1 C=2 D=3 E=4 F=5 G=6
         data_cell, hora_cell = row[0], row[1]
         time_casa: str = str(row[2]) if row[2] is not None else ""
@@ -180,7 +186,7 @@ def ler_oficial(ws: object) -> list[LinhaOficial]:
 
 
 def ler_palpites_jogador(
-    ws: object,
+    ws: Worksheet,
     nome_aba: str,
     linhas_oficial: list[LinhaOficial],
 ) -> dict[int, LinhaPalpite]:
@@ -194,7 +200,7 @@ def ler_palpites_jogador(
     palpites: dict[int, LinhaPalpite] = {}
     for linha_of in linhas_oficial:
         r = linha_of.row
-        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=15, values_only=True))[0]  # type: ignore[union-attr]
+        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=15, values_only=True))[0]
         # Validação de alinhamento: col C e G devem bater com OFICIAL
         tc_jogador = str(row[2]) if row[2] is not None else ""
         tv_jogador = str(row[6]) if row[6] is not None else ""
@@ -223,14 +229,20 @@ def ler_palpites_jogador(
 
 
 def _get_or_create_usuario(
-    db: object,
+    db: Session,
     username: str,
     nome: str,
     senha: str,
 ) -> tuple[Usuario, bool]:
-    """Retorna (usuario, criado). Atualiza nome e senha se já existir."""
+    """Retorna (usuario, criado).
+
+    Usuário NOVO: cria com a senha provisória.
+    Usuário EXISTENTE: atualiza nome e reativa, mas **NUNCA** reescreve
+    `senha_hash` — preserva a senha que o jogador já trocou (idempotência de
+    credencial) — nem toca em `is_admin`.
+    """
     stmt = select(Usuario).where(Usuario.username == username)
-    usuario = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    usuario = db.execute(stmt).scalar_one_or_none()
     if usuario is None:
         usuario = Usuario(
             nome=nome,
@@ -239,23 +251,23 @@ def _get_or_create_usuario(
             is_admin=False,
             ativo=True,
         )
-        db.add(usuario)  # type: ignore[union-attr]
+        db.add(usuario)
         return usuario, True
-    # Atualiza nome e senha, mas nunca toca is_admin
+    # Já existe: atualiza nome e reativa, mas NUNCA reescreve senha_hash
+    # (preserva a senha que o jogador já trocou) nem toca em is_admin.
     usuario.nome = nome
-    usuario.senha_hash = hash_senha(senha)
     usuario.ativo = True
     return usuario, False
 
 
 def _get_or_create_rodada(
-    db: object,
+    db: Session,
     ordem: int,
     nome: str,
 ) -> tuple[Rodada, bool]:
     """Retorna (rodada, criado). Atualiza nome se já existir."""
     stmt = select(Rodada).where(Rodada.ordem == ordem)
-    rodada = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    rodada = db.execute(stmt).scalar_one_or_none()
     if rodada is None:
         rodada = Rodada(
             nome=nome,
@@ -264,14 +276,14 @@ def _get_or_create_rodada(
             abertura=None,
             fechamento=None,
         )
-        db.add(rodada)  # type: ignore[union-attr]
+        db.add(rodada)
         return rodada, True
     rodada.nome = nome
     return rodada, False
 
 
 def _get_or_create_jogo(
-    db: object,
+    db: Session,
     rodada_id: int,
     time_casa: str,
     time_visitante: str,
@@ -279,14 +291,20 @@ def _get_or_create_jogo(
     gols_casa: int | None,
     gols_visitante: int | None,
     status: str,
-) -> tuple[Jogo, bool]:
-    """Retorna (jogo, criado). Atualiza data_hora, gols e status se já existir."""
+) -> tuple[Jogo, bool, bool]:
+    """Retorna (jogo, criado, protegido).
+
+    - Jogo NOVO: cria com os dados da planilha → (jogo, True, False).
+    - Jogo já ENCERRADO: NÃO sobrescreve placar/status/data — o resultado no
+      banco é autoritativo (pode ter vindo da ESPN/admin) → (jogo, False, True).
+    - Jogo existente ainda não encerrado: atualiza data_hora/gols/status.
+    """
     stmt = select(Jogo).where(
         Jogo.rodada_id == rodada_id,
         Jogo.time_casa == time_casa,
         Jogo.time_visitante == time_visitante,
     )
-    jogo = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    jogo = db.execute(stmt).scalar_one_or_none()
     if jogo is None:
         jogo = Jogo(
             rodada_id=rodada_id,
@@ -297,17 +315,20 @@ def _get_or_create_jogo(
             gols_visitante=gols_visitante,
             status=status,
         )
-        db.add(jogo)  # type: ignore[union-attr]
-        return jogo, True
+        db.add(jogo)
+        return jogo, True, False
+    if jogo.status == STATUS_ENCERRADO:
+        # Não sobrescreve um jogo já encerrado (resultado autoritativo no banco).
+        return jogo, False, True
     jogo.data_hora = data_hora
     jogo.gols_casa = gols_casa
     jogo.gols_visitante = gols_visitante
     jogo.status = status
-    return jogo, False
+    return jogo, False, False
 
 
 def _get_or_create_palpite(
-    db: object,
+    db: Session,
     usuario_id: int,
     jogo_id: int,
     gols_casa: int,
@@ -319,7 +340,7 @@ def _get_or_create_palpite(
         Palpite.usuario_id == usuario_id,
         Palpite.jogo_id == jogo_id,
     )
-    palpite = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    palpite = db.execute(stmt).scalar_one_or_none()
     if palpite is None:
         palpite = Palpite(
             usuario_id=usuario_id,
@@ -328,7 +349,7 @@ def _get_or_create_palpite(
             gols_visitante=gols_visitante,
             pontos=pontos,
         )
-        db.add(palpite)  # type: ignore[union-attr]
+        db.add(palpite)
         return palpite, True
     palpite.gols_casa = gols_casa
     palpite.gols_visitante = gols_visitante
@@ -343,7 +364,7 @@ def _get_or_create_palpite(
 
 def importar(
     senha: str = SENHA_PADRAO,
-    session_factory: object | None = None,
+    session_factory: Callable[[], Session] | None = None,
     xlsx_path: Path | None = None,
 ) -> None:
     """Executa a importação completa da planilha no banco.
@@ -435,9 +456,12 @@ def importar(
         # ---------------------------------------------------------------
         # 3. Jogos
         # ---------------------------------------------------------------
-        stats_jogos = {"criados": 0, "atualizados": 0}
+        stats_jogos = {"criados": 0, "atualizados": 0, "protegidos": 0}
         # Mapa (rodada_id, time_casa, time_visitante) -> Jogo
         jogo_por_chave: dict[tuple[int, str, str], Jogo] = {}
+        # Jogos já encerrados que NÃO foram tocados — seus palpites/pontos
+        # também não devem ser reescritos (resultado autoritativo no banco).
+        jogos_protegidos: set[tuple[int, str, str]] = set()
 
         for linha in linhas_oficial:
             rodada_info = row_para_rodada.get(linha.row)
@@ -447,7 +471,7 @@ def importar(
             ordem, _ = rodada_info
             rodada = rodada_por_ordem[ordem]
 
-            jogo, criado = _get_or_create_jogo(
+            jogo, criado, protegido = _get_or_create_jogo(
                 db=db,
                 rodada_id=rodada.id,
                 time_casa=linha.time_casa,
@@ -459,7 +483,10 @@ def importar(
             )
             chave = (rodada.id, linha.time_casa, linha.time_visitante)
             jogo_por_chave[chave] = jogo
-            if criado:
+            if protegido:
+                jogos_protegidos.add(chave)
+                stats_jogos["protegidos"] += 1
+            elif criado:
                 stats_jogos["criados"] += 1
             else:
                 stats_jogos["atualizados"] += 1
@@ -485,6 +512,10 @@ def importar(
                 if jogo is None:
                     # Não deveria ocorrer; jogo foi criado na etapa anterior
                     print(f"AVISO: jogo não encontrado para linha {row_num} aba {aba_nome}")
+                    continue
+                if chave_jogo in jogos_protegidos:
+                    # Jogo encerrado preservado — não reescreve palpite/pontos
+                    # (evita recomputar pontos a partir de um placar divergente).
                     continue
 
                 # Calcula pontos
@@ -536,7 +567,11 @@ def importar(
         print("\n=== RESUMO DA IMPORTAÇÃO ===")
         print(f"Usuários : {stats_usuarios['criados']} criados, {stats_usuarios['atualizados']} atualizados")
         print(f"Rodadas  : {stats_rodadas['criadas']} criadas, {stats_rodadas['atualizadas']} atualizadas")
-        print(f"Jogos    : {stats_jogos['criados']} criados, {stats_jogos['atualizados']} atualizados")
+        print(
+            f"Jogos    : {stats_jogos['criados']} criados, "
+            f"{stats_jogos['atualizados']} atualizados, "
+            f"{stats_jogos['protegidos']} preservados (encerrados)"
+        )
         print(f"Palpites : {stats_palpites['criados']} criados, {stats_palpites['atualizados']} atualizados")
 
         if divergencias_planilha:

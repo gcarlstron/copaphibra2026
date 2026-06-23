@@ -7,7 +7,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.models import Jogo, Palpite, Rodada, Usuario
-from app.services.prazo import palpites_de_terceiros_visiveis, rodada_aberta_para_edicao
+from app.services.prazo import rodada_aberta_para_edicao
 
 
 @dataclass(slots=True)
@@ -21,7 +21,6 @@ class JogoPalpiteView:
     palpite_casa: int | None
     palpite_visitante: int | None
     aberta_para_edicao: bool
-    terceiros_visiveis: bool
 
 
 @dataclass(slots=True)
@@ -30,7 +29,6 @@ class RodadaPalpitesView:
     rodada_nome: str
     ordem: int
     aberta_para_edicao: bool
-    terceiros_visiveis: bool
     jogos: list[JogoPalpiteView]
 
 
@@ -51,9 +49,6 @@ def listar_palpites_do_usuario(db: Session, usuario: Usuario, agora: datetime | 
 
     for jogo, rodada, palpite in rows:
         aberta_para_edicao = rodada_aberta_para_edicao(rodada.aberta, rodada.abertura, rodada.fechamento, momento_atual)
-        terceiros_visiveis = palpites_de_terceiros_visiveis(
-            rodada.aberta, rodada.abertura, rodada.fechamento, momento_atual
-        )
 
         rodada_view = agrupado.get(rodada.id)
         if rodada_view is None:
@@ -62,7 +57,6 @@ def listar_palpites_do_usuario(db: Session, usuario: Usuario, agora: datetime | 
                 rodada_nome=rodada.nome,
                 ordem=rodada.ordem,
                 aberta_para_edicao=aberta_para_edicao,
-                terceiros_visiveis=terceiros_visiveis,
                 jogos=[],
             )
             agrupado[rodada.id] = rodada_view
@@ -78,7 +72,6 @@ def listar_palpites_do_usuario(db: Session, usuario: Usuario, agora: datetime | 
                 palpite_casa=None if palpite is None else palpite.gols_casa,
                 palpite_visitante=None if palpite is None else palpite.gols_visitante,
                 aberta_para_edicao=aberta_para_edicao,
-                terceiros_visiveis=terceiros_visiveis,
             )
         )
 
