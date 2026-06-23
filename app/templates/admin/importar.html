@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="page-section">
+
+    {# ── Cabeçalho ──────────────────────────────────────────────── #}
+    <div class="section-head">
+        <div>
+            <p class="eyebrow">Administração</p>
+            <h2>Importar planilha</h2>
+        </div>
+        <div class="section-head-actions">
+            <a href="/admin/rodadas" class="btn-secondary">Rodadas</a>
+            <a href="/admin/jogos" class="btn-secondary">Jogos</a>
+            <a href="/admin/usuarios" class="btn-secondary">Usuários</a>
+            <a href="/" class="btn-secondary">Voltar ao dashboard</a>
+        </div>
+    </div>
+
+    {% if erro %}
+    <div class="alert-banner" role="alert">
+        <div class="alert-banner-icon" aria-hidden="true">!</div>
+        <div class="alert-banner-body">
+            <strong>Erro na importação</strong>
+            <p style="margin:0;font-size:0.9rem;color:var(--text)">{{ erro }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {# ── Form ───────────────────────────────────────────────────── #}
+    <article class="round-card">
+        <header class="round-head"><h3>Rodar importação</h3></header>
+        <p class="muted">
+            Importa jogos, resultados e palpites da planilha escolhida (pasta <code>import/</code>),
+            direto na base de produção. Idempotente: jogos já encerrados são preservados; cria/atualiza o resto.
+        </p>
+        {% if planilhas %}
+        <form method="post" action="/admin/importar" class="estatisticas-acoes"
+              onsubmit="return confirm('Importar esta planilha na base de produção?');">
+            <label style="display:flex;flex-direction:column;gap:6px;font-weight:600;">
+                Planilha
+                <select name="arquivo" required>
+                    {% for p in planilhas %}
+                    <option value="{{ p }}">{{ p }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <button type="submit" class="btn-primary">Importar</button>
+        </form>
+        {% else %}
+        <p class="muted">Nenhuma planilha <code>.xlsx</code> encontrada na pasta <code>import/</code>.</p>
+        {% endif %}
+    </article>
+
+    {# ── Resultado ──────────────────────────────────────────────── #}
+    {% if resultado %}
+    <article class="round-card">
+        <header class="round-head">
+            <h3>Resultado — {{ resultado.arquivo }}</h3>
+            {% if resultado.todos_ok %}
+            <span class="status-pill">✓ totais conferem</span>
+            {% else %}
+            <span class="status-pill" style="background:#fee2e2;color:#991b1b;">⚠ totais divergem</span>
+            {% endif %}
+        </header>
+
+        <table class="regras-tabela">
+            <tbody>
+                <tr><td>Usuários</td><td>{{ resultado.usuarios_criados }} criados, {{ resultado.usuarios_atualizados }} atualizados</td></tr>
+                <tr><td>Rodadas</td><td>{{ resultado.rodadas_criadas }} criadas, {{ resultado.rodadas_atualizadas }} atualizadas</td></tr>
+                <tr><td>Jogos</td><td>{{ resultado.jogos_criados }} criados, {{ resultado.jogos_atualizados }} atualizados, {{ resultado.jogos_protegidos }} preservados</td></tr>
+                <tr><td>Palpites</td><td>{{ resultado.palpites_criados }} criados, {{ resultado.palpites_atualizados }} atualizados</td></tr>
+                <tr><td>Divergências</td><td>{{ resultado.divergencias | length }} vs col O da planilha</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Validação de pontos (R1+R2)</h3>
+        <table class="regras-tabela">
+            <thead><tr><th>Jogador</th><th>Calculado</th><th>Esperado</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for v in resultado.validacao %}
+                <tr>
+                    <td style="width:auto;color:var(--text);">{{ v.nome }}</td>
+                    <td>{{ v.calculado }}</td>
+                    <td>{{ v.esperado if v.esperado is not none else '—' }}</td>
+                    <td>{{ 'OK' if v.ok else 'DIVERGE' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </article>
+    {% endif %}
+
+</section>
+{% endblock %}

@@ -25,6 +25,7 @@ from app.database import get_db
 from app.models import Usuario
 from app.routers.auth import get_current_user
 from app.services import admin as admin_svc
+from app.services import importacao as import_svc
 
 router = APIRouter(prefix="/admin")
 
@@ -365,6 +366,60 @@ def definir_ativo(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     return _redirect_or_htmx(request, "/admin/usuarios")
+
+
+# ---------------------------------------------------------------------------
+# Importação de planilhas (import/*.xlsx) — roda server-side, admin-only
+# ---------------------------------------------------------------------------
+
+
+def _ctx_importar(
+    current_user: Usuario, resultado=None, erro: str | None = None
+) -> dict:
+    return {
+        "app_name": get_settings().app_name,
+        "user_id": current_user.id,
+        "is_admin": current_user.is_admin,
+        "planilhas": import_svc.listar_planilhas(),
+        "resultado": resultado,
+        "erro": erro,
+    }
+
+
+@router.get("/importar", response_class=HTMLResponse)
+def importar_form(
+    request: Request,
+    current_user: Usuario | None = Depends(get_current_user),
+) -> Response:
+    guard = _check_admin(current_user)
+    if isinstance(guard, Response):
+        return guard
+    return _templates().TemplateResponse(
+        request, "admin/importar.html", _ctx_importar(guard)
+    )
+
+
+@router.post("/importar", response_class=HTMLResponse)
+def importar_executar(
+    request: Request,
+    arquivo: str = Form(...),
+    current_user: Usuario | None = Depends(get_current_user),
+) -> Response:
+    guard = _check_admin(current_user)
+    if isinstance(guard, Response):
+        return guard
+    resultado = None
+    erro: str | None = None
+    try:
+        resultado = import_svc.importar_planilha(arquivo)
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        erro = str(exc)
+    return _templates().TemplateResponse(
+        request,
+        "admin/importar.html",
+        _ctx_importar(guard, resultado=resultado, erro=erro),
+        status_code=status.HTTP_400_BAD_REQUEST if erro else status.HTTP_200_OK,
+    )
 
 
 # ---------------------------------------------------------------------------
