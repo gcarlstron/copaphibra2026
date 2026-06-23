@@ -25,7 +25,7 @@ from __future__ import annotations
 import sys
 from datetime import date, datetime, time, timezone
 from pathlib import Path
-from typing import NamedTuple
+from typing import Callable, NamedTuple
 
 # ---------------------------------------------------------------------------
 # Bootstrap de sys.path para permitir ``import app...`` ao rodar diretamente.
@@ -35,7 +35,9 @@ sys.path.insert(0, str(_PROJECT_ROOT))
 
 # Após o path bootstrap, as importações do app ficam disponíveis.
 import openpyxl  # noqa: E402
+from openpyxl.worksheet.worksheet import Worksheet  # noqa: E402
 from sqlalchemy import select  # noqa: E402
+from sqlalchemy.orm import Session  # noqa: E402
 
 from app.database import SessionLocal  # noqa: E402
 from app.models import Jogo, Palpite, Rodada, Usuario  # noqa: E402
@@ -145,11 +147,11 @@ def _combinar_data_hora(data_cell: object, hora_cell: object) -> datetime:
     return datetime(d.year, d.month, d.day, h.hour, h.minute, tzinfo=timezone.utc)
 
 
-def ler_oficial(ws: object) -> list[LinhaOficial]:
+def ler_oficial(ws: Worksheet) -> list[LinhaOficial]:
     """Lê as linhas 2–73 da aba OFICIAL e retorna LinhaOficial por linha."""
     linhas: list[LinhaOficial] = []
     for r in range(LINHA_INICIO, LINHA_FIM + 1):
-        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=7, values_only=True))[0]  # type: ignore[union-attr]
+        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=7, values_only=True))[0]
         # Colunas: A=0 B=1 C=2 D=3 E=4 F=5 G=6
         data_cell, hora_cell = row[0], row[1]
         time_casa: str = str(row[2]) if row[2] is not None else ""
@@ -184,7 +186,7 @@ def ler_oficial(ws: object) -> list[LinhaOficial]:
 
 
 def ler_palpites_jogador(
-    ws: object,
+    ws: Worksheet,
     nome_aba: str,
     linhas_oficial: list[LinhaOficial],
 ) -> dict[int, LinhaPalpite]:
@@ -198,7 +200,7 @@ def ler_palpites_jogador(
     palpites: dict[int, LinhaPalpite] = {}
     for linha_of in linhas_oficial:
         r = linha_of.row
-        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=15, values_only=True))[0]  # type: ignore[union-attr]
+        row = list(ws.iter_rows(min_row=r, max_row=r, min_col=1, max_col=15, values_only=True))[0]
         # Validação de alinhamento: col C e G devem bater com OFICIAL
         tc_jogador = str(row[2]) if row[2] is not None else ""
         tv_jogador = str(row[6]) if row[6] is not None else ""
@@ -227,7 +229,7 @@ def ler_palpites_jogador(
 
 
 def _get_or_create_usuario(
-    db: object,
+    db: Session,
     username: str,
     nome: str,
     senha: str,
@@ -240,7 +242,7 @@ def _get_or_create_usuario(
     credencial) — nem toca em `is_admin`.
     """
     stmt = select(Usuario).where(Usuario.username == username)
-    usuario = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    usuario = db.execute(stmt).scalar_one_or_none()
     if usuario is None:
         usuario = Usuario(
             nome=nome,
@@ -249,7 +251,7 @@ def _get_or_create_usuario(
             is_admin=False,
             ativo=True,
         )
-        db.add(usuario)  # type: ignore[union-attr]
+        db.add(usuario)
         return usuario, True
     # Já existe: atualiza nome e reativa, mas NUNCA reescreve senha_hash
     # (preserva a senha que o jogador já trocou) nem toca em is_admin.
@@ -259,13 +261,13 @@ def _get_or_create_usuario(
 
 
 def _get_or_create_rodada(
-    db: object,
+    db: Session,
     ordem: int,
     nome: str,
 ) -> tuple[Rodada, bool]:
     """Retorna (rodada, criado). Atualiza nome se já existir."""
     stmt = select(Rodada).where(Rodada.ordem == ordem)
-    rodada = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    rodada = db.execute(stmt).scalar_one_or_none()
     if rodada is None:
         rodada = Rodada(
             nome=nome,
@@ -274,14 +276,14 @@ def _get_or_create_rodada(
             abertura=None,
             fechamento=None,
         )
-        db.add(rodada)  # type: ignore[union-attr]
+        db.add(rodada)
         return rodada, True
     rodada.nome = nome
     return rodada, False
 
 
 def _get_or_create_jogo(
-    db: object,
+    db: Session,
     rodada_id: int,
     time_casa: str,
     time_visitante: str,
@@ -302,7 +304,7 @@ def _get_or_create_jogo(
         Jogo.time_casa == time_casa,
         Jogo.time_visitante == time_visitante,
     )
-    jogo = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    jogo = db.execute(stmt).scalar_one_or_none()
     if jogo is None:
         jogo = Jogo(
             rodada_id=rodada_id,
@@ -313,7 +315,7 @@ def _get_or_create_jogo(
             gols_visitante=gols_visitante,
             status=status,
         )
-        db.add(jogo)  # type: ignore[union-attr]
+        db.add(jogo)
         return jogo, True, False
     if jogo.status == STATUS_ENCERRADO:
         # Não sobrescreve um jogo já encerrado (resultado autoritativo no banco).
@@ -326,7 +328,7 @@ def _get_or_create_jogo(
 
 
 def _get_or_create_palpite(
-    db: object,
+    db: Session,
     usuario_id: int,
     jogo_id: int,
     gols_casa: int,
@@ -338,7 +340,7 @@ def _get_or_create_palpite(
         Palpite.usuario_id == usuario_id,
         Palpite.jogo_id == jogo_id,
     )
-    palpite = db.execute(stmt).scalar_one_or_none()  # type: ignore[union-attr]
+    palpite = db.execute(stmt).scalar_one_or_none()
     if palpite is None:
         palpite = Palpite(
             usuario_id=usuario_id,
@@ -347,7 +349,7 @@ def _get_or_create_palpite(
             gols_visitante=gols_visitante,
             pontos=pontos,
         )
-        db.add(palpite)  # type: ignore[union-attr]
+        db.add(palpite)
         return palpite, True
     palpite.gols_casa = gols_casa
     palpite.gols_visitante = gols_visitante
@@ -362,7 +364,7 @@ def _get_or_create_palpite(
 
 def importar(
     senha: str = SENHA_PADRAO,
-    session_factory: object | None = None,
+    session_factory: Callable[[], Session] | None = None,
     xlsx_path: Path | None = None,
 ) -> None:
     """Executa a importação completa da planilha no banco.
