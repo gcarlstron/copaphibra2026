@@ -11,6 +11,7 @@ from app.routers.dashboard import router as dashboard_router
 from app.routers.estatisticas import router as estatisticas_router
 from app.routers.jogos import router as jogos_router
 from app.routers.palpites import router as palpites_router
+from app.routers.regras import router as regras_router
 
 
 def create_app() -> FastAPI:
@@ -33,6 +34,7 @@ def create_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=str(settings.static_dir)), name="static")
     app.include_router(auth_router)
     app.include_router(palpites_router)
+    app.include_router(regras_router)
     app.include_router(jogos_router)
     app.include_router(dashboard_router)
     app.include_router(estatisticas_router)

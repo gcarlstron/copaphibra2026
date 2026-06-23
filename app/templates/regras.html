@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="round-card">
+    <header class="round-head">
+        <h2>Regras de pontuação</h2>
+    </header>
+    <p class="muted">Quanto cada palpite vale, comparado ao resultado oficial do jogo.</p>
+
+    <table class="regras-tabela">
+        <thead>
+            <tr><th>Pontos</th><th>Quando você ganha</th></tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>9</td>
+                <td>Cravou o <strong>placar exato</strong> — seja vitória ou empate.</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>Acertou o <strong>vencedor</strong> e o <strong>nº de gols do vencedor</strong> (placar não exato); <em>ou</em> acertou que foi <strong>empate</strong>, mas com o placar errado.</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>Acertou o <strong>vencedor</strong> e o <strong>nº de gols do perdedor</strong> (mas não os gols do vencedor).</td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>Acertou <strong>só o vencedor</strong>.</td>
+            </tr>
+            <tr>
+                <td>0</td>
+                <td>Errou o vencedor — ou errou que o jogo seria empate.</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Critério de desempate</h3>
+    <p class="muted">Quando dois jogadores terminam com o <strong>mesmo total</strong> de pontos, desempata por quem tem <strong>mais palpites de 9</strong>; persistindo, mais de <strong>6</strong>, depois <strong>4</strong>, depois <strong>3</strong>; por fim, <strong>sorteio</strong>.</p>
+
+    <h3>Exemplos</h3>
+    <p class="muted">Resultado oficial <strong>2&times;1</strong> (casa vence):</p>
+    <table class="regras-tabela">
+        <thead>
+            <tr><th>Palpite</th><th>Pontos</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>2&times;1</td><td>9 — placar exato</td></tr>
+            <tr><td>2&times;0</td><td>6 — vencedor certo + gols do vencedor (2)</td></tr>
+            <tr><td>3&times;1</td><td>4 — vencedor certo + gols do perdedor (1)</td></tr>
+            <tr><td>1&times;0</td><td>3 — só o vencedor</td></tr>
+            <tr><td>1&times;2</td><td>0 — errou o vencedor</td></tr>
+        </tbody>
+    </table>
+    <p class="muted">Num empate oficial (ex.: 1&times;1): cravar 1&times;1 vale 9; outro empate qualquer (ex.: 2&times;2) vale 6; apontar um vencedor vale 0.</p>
+</section>
+{% endblock %}
