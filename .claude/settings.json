@@ -15,7 +15,11 @@
       "Bash(.venv/Scripts/python.exe -)",
       "Bash(git fetch *)",
       "Bash(git pull *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(./.venv/Scripts/python.exe -m pytest -q)",
+      "Bash(./.venv/Scripts/python.exe -c \"import app.main; from app.routers import auth, dashboard, palpites, jogos, admin; from app.services import espn, sync_resultados; print\\('import ok'\\)\")",
+      "Bash(DEBUG=1 ./.venv/Scripts/python.exe -c \"import app.main; from app.routers import auth, dashboard, palpites, jogos, admin; from app.services import espn, sync_resultados; print\\('import ok'\\)\")",
+      "mcp__context7__query-docs"
     ]
   }
 }
