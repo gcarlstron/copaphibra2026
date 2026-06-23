@@ -23,6 +23,7 @@ Requisitos:
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -51,7 +52,7 @@ from app.services.scoring import calcular_pontos  # noqa: E402
 
 SENHA_PADRAO: str = "copaphibra2026"
 
-XLSX_PATH: Path = _PROJECT_ROOT / "import" / "COPA PHIBRA 2026 OFICIAL ATÉ A FINAL SEGUNDA FASE.xlsx"
+XLSX_PATH: Path = _PROJECT_ROOT / "import" / "COPA PHIBRA 2026 OFICIAL ATÉ A FINAL TERCEIRA FASE.xlsx"
 
 # Aba com resultados oficiais e placar
 ABA_OFICIAL: str = "OFICIAL"
@@ -82,18 +83,21 @@ RODADAS: list[tuple[int, str, int, int]] = [
     (3, "3ª Rodada", 50, 73),
 ]
 
-# Totais esperados da planilha (para validação final)
+# Totais esperados (R1+R2) para a validação final. Atualizados em 2026-06-23 a
+# partir da col O da planilha da 3ª fase (e conferem com a classificação atual do
+# banco). A R3 ainda não tem resultado, então não soma pontos aqui.
+# Obs.: este snapshot precisa ser reajustado quando a R3 começar a ter resultados.
 ESPERADO: dict[str, int] = {
-    "Bernardo": 44,
-    "Thiago": 47,
-    "Ricardo": 47,
-    "Fernando": 40,
-    "Gustavo": 48,
-    "Marcio": 67,
-    "Gabriel": 34,
-    "Renan": 26,
-    "Soares": 48,
-    "Marques": 63,
+    "Bernardo": 111,
+    "Thiago": 118,
+    "Ricardo": 101,
+    "Fernando": 96,
+    "Gustavo": 101,
+    "Marcio": 120,
+    "Gabriel": 85,
+    "Renan": 83,
+    "Soares": 119,
+    "Marques": 129,
 }
 
 
@@ -121,6 +125,39 @@ class LinhaPalpite(NamedTuple):
     gols_casa: int
     gols_visitante: int
     pontos_planilha: int | None  # col O — só para log/diagnóstico
+
+
+@dataclass(slots=True)
+class LinhaValidacao:
+    """Uma linha da validação de totais (por jogador)."""
+
+    nome: str
+    calculado: int
+    esperado: int | None
+    ok: bool
+
+
+@dataclass(slots=True)
+class ResultadoImportacao:
+    """Resumo do que a importação fez — retornado por `importar()`.
+
+    Não imprime nem aborta: o caller (CLI ou rota admin) decide o que mostrar e
+    se trata `todos_ok=False` como erro.
+    """
+
+    arquivo: str
+    usuarios_criados: int
+    usuarios_atualizados: int
+    rodadas_criadas: int
+    rodadas_atualizadas: int
+    jogos_criados: int
+    jogos_atualizados: int
+    jogos_protegidos: int
+    palpites_criados: int
+    palpites_atualizados: int
+    divergencias: list[tuple]
+    validacao: list[LinhaValidacao]
+    todos_ok: bool
 
 
 # ---------------------------------------------------------------------------
@@ -366,8 +403,14 @@ def importar(
     senha: str = SENHA_PADRAO,
     session_factory: Callable[[], Session] | None = None,
     xlsx_path: Path | None = None,
-) -> None:
-    """Executa a importação completa da planilha no banco.
+) -> ResultadoImportacao:
+    """Executa a importação completa da planilha no banco e devolve um resumo.
+
+    Idempotente. NÃO imprime nem chama ``sys.exit`` — devolve um
+    ``ResultadoImportacao`` (com ``todos_ok``) e o caller decide o que fazer.
+    Levanta ``FileNotFoundError``/``RuntimeError`` em erro de arquivo/aba, e
+    ``RuntimeError`` em desalinhamento de palpite — seguro para chamar de uma
+    rota web.
 
     Args:
         senha: Senha provisória aplicada a todos os 10 jogadores.
@@ -380,8 +423,7 @@ def importar(
     _session_factory = session_factory if session_factory is not None else SessionLocal
 
     if not _xlsx.exists():
-        print(f"ERRO: Arquivo não encontrado: {_xlsx}")
-        sys.exit(1)
+        raise FileNotFoundError(f"Arquivo não encontrado: {_xlsx}")
 
     print(f"Abrindo planilha: {_xlsx.name}")
     wb = openpyxl.load_workbook(str(_xlsx), data_only=True)
@@ -389,8 +431,7 @@ def importar(
     # Valida que as abas esperadas existem
     for aba in [ABA_OFICIAL] + list(JOGADORES.keys()):
         if aba not in wb.sheetnames:
-            print(f"ERRO: Aba {aba!r} não encontrada na planilha.")
-            sys.exit(1)
+            raise RuntimeError(f"Aba {aba!r} não encontrada na planilha.")
 
     ws_oficial = wb[ABA_OFICIAL]
 
@@ -562,38 +603,14 @@ def importar(
         db.commit()
 
         # ---------------------------------------------------------------
-        # 5. Resumo
+        # 5. Validação de totais (R1+R2). NÃO imprime nem aborta — devolve o
+        #    resultado; o caller (CLI ou rota admin) decide o que mostrar.
         # ---------------------------------------------------------------
-        print("\n=== RESUMO DA IMPORTAÇÃO ===")
-        print(f"Usuários : {stats_usuarios['criados']} criados, {stats_usuarios['atualizados']} atualizados")
-        print(f"Rodadas  : {stats_rodadas['criadas']} criadas, {stats_rodadas['atualizadas']} atualizadas")
-        print(
-            f"Jogos    : {stats_jogos['criados']} criados, "
-            f"{stats_jogos['atualizados']} atualizados, "
-            f"{stats_jogos['protegidos']} preservados (encerrados)"
-        )
-        print(f"Palpites : {stats_palpites['criados']} criados, {stats_palpites['atualizados']} atualizados")
-
-        if divergencias_planilha:
-            print(f"\nDIVERGÊNCIAS vs col O da planilha ({len(divergencias_planilha)} casos):")
-            print(f"{'Aba':12s} {'Linha':5s} {'Palp':8s} {'Ofic':8s} {'Nosso':5s} {'PlanO':5s}")
-            for d in divergencias_planilha:
-                aba, row, pc, pv, oc, ov, nosso, planO = d
-                print(f"{aba:12s} {row:5d} {pc}-{pv:2d}     {oc}-{ov:2d}     {nosso:5d} {planO:5d}")
-        else:
-            print("\nNenhuma divergência vs col O da planilha.")
-
-        # ---------------------------------------------------------------
-        # 6. Validação final de totais
-        # ---------------------------------------------------------------
-        print("\n=== VALIDAÇÃO DE PONTOS ===")
-        print(f"{'Jogador':12s} | {'Calculado':>9s} | {'Esperado':>8s} | Status")
-        print("-" * 50)
-
+        validacao: list[LinhaValidacao] = []
         todos_ok = True
         for aba_nome, nome_display in JOGADORES.items():
             usuario = usuario_por_aba[aba_nome]
-            # Soma os pontos apenas dos palpites de jogos COM resultado
+            # Soma os pontos apenas dos palpites de jogos COM resultado.
             stmt_total = (
                 select(Palpite.pontos)
                 .join(Jogo, Palpite.jogo_id == Jogo.id)
@@ -602,24 +619,28 @@ def importar(
                     Jogo.status == STATUS_ENCERRADO,
                 )
             )
-            rows_pts = db.execute(stmt_total).all()
-            total_calc = sum(r[0] for r in rows_pts)
-            esperado = ESPERADO.get(nome_display, None)
-            if esperado is None:
-                status_str = "SEM ESPERADO"
-            elif total_calc == esperado:
-                status_str = "OK"
-            else:
-                status_str = "DIVERGE"
+            total_calc = sum(r[0] for r in db.execute(stmt_total).all())
+            esperado = ESPERADO.get(nome_display)
+            ok = esperado is not None and total_calc == esperado
+            if esperado is not None and not ok:
                 todos_ok = False
-            print(f"{nome_display:12s} | {total_calc:>9d} | {str(esperado):>8s} | {status_str}")
+            validacao.append(LinhaValidacao(nome_display, total_calc, esperado, ok))
 
-        print("-" * 50)
-        if todos_ok:
-            print("\nImportação concluída com sucesso — todos os totais conferem.")
-        else:
-            print("\nERRO: totais divergem do esperado. Verifique as divergências acima.")
-            sys.exit(1)
+        return ResultadoImportacao(
+            arquivo=_xlsx.name,
+            usuarios_criados=stats_usuarios["criados"],
+            usuarios_atualizados=stats_usuarios["atualizados"],
+            rodadas_criadas=stats_rodadas["criadas"],
+            rodadas_atualizadas=stats_rodadas["atualizadas"],
+            jogos_criados=stats_jogos["criados"],
+            jogos_atualizados=stats_jogos["atualizados"],
+            jogos_protegidos=stats_jogos["protegidos"],
+            palpites_criados=stats_palpites["criados"],
+            palpites_atualizados=stats_palpites["atualizados"],
+            divergencias=divergencias_planilha,
+            validacao=validacao,
+            todos_ok=todos_ok,
+        )
 
     except Exception:
         db.rollback()
@@ -634,9 +655,36 @@ def importar(
 
 
 def main() -> None:
-    """Ponto de entrada do script."""
+    """Ponto de entrada do script (CLI): importa, imprime o resumo e sai 1 se divergir."""
     senha = sys.argv[1] if len(sys.argv) > 1 else SENHA_PADRAO
-    importar(senha=senha)
+    res = importar(senha=senha)
+
+    print(f"\n=== RESUMO DA IMPORTAÇÃO ({res.arquivo}) ===")
+    print(f"Usuários : {res.usuarios_criados} criados, {res.usuarios_atualizados} atualizados")
+    print(f"Rodadas  : {res.rodadas_criadas} criadas, {res.rodadas_atualizadas} atualizadas")
+    print(
+        f"Jogos    : {res.jogos_criados} criados, {res.jogos_atualizados} atualizados, "
+        f"{res.jogos_protegidos} preservados (encerrados)"
+    )
+    print(f"Palpites : {res.palpites_criados} criados, {res.palpites_atualizados} atualizados")
+
+    if res.divergencias:
+        print(f"\nDIVERGÊNCIAS vs col O da planilha ({len(res.divergencias)} casos):")
+        for aba, row, pc, pv, oc, ov, nosso, planO in res.divergencias:
+            print(f"  {aba:12s} L{row}: palpite {pc}-{pv} | oficial {oc}-{ov} | nosso {nosso}, col O {planO}")
+    else:
+        print("\nNenhuma divergência vs col O da planilha.")
+
+    print("\n=== VALIDAÇÃO DE PONTOS ===")
+    for v in res.validacao:
+        status_str = "OK" if v.ok else ("SEM ESPERADO" if v.esperado is None else "DIVERGE")
+        print(f"  {v.nome:12s} | calc {v.calculado:>4d} | esperado {str(v.esperado):>4s} | {status_str}")
+
+    if res.todos_ok:
+        print("\nImportação concluída com sucesso — todos os totais conferem.")
+    else:
+        print("\nERRO: totais divergem do esperado.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
