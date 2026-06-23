@@ -1407,6 +1407,38 @@ body::before {
 }
 
 /* ============================================================
+   Regras de pontuação — tabela
+   ============================================================ */
+
+.regras-tabela {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0 8px;
+}
+
+.regras-tabela th,
+.regras-tabela td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+}
+
+.regras-tabela th {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+}
+
+.regras-tabela td:first-child {
+    font-weight: 800;
+    color: var(--accent);
+    white-space: nowrap;
+    width: 70px;
+}
+
+/* ============================================================
    Responsivo — jogos lista no mobile
    ============================================================ */
 
