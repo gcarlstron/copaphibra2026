@@ -1,0 +1,298 @@
+{
+  "events": [
+    {
+      "id": "760486",
+      "date": "2026-06-28T19:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14001,
+        "slug": "round-of-32"
+      },
+      "competitions": [
+        {
+          "status": {
+            "type": {
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false
+            }
+          },
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": null,
+              "team": {
+                "id": "467",
+                "abbreviation": "RSA",
+                "displayName": "South Africa",
+                "name": "South Africa"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": null,
+              "team": {
+                "id": "203",
+                "abbreviation": "CAN",
+                "displayName": "Canada",
+                "name": "Canada"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "760490",
+      "date": "2026-07-04T19:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14002,
+        "slug": "round-of-16"
+      },
+      "competitions": [
+        {
+          "status": {
+            "type": {
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false
+            }
+          },
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": null,
+              "team": {
+                "id": "9999",
+                "abbreviation": "RD32",
+                "displayName": "Round of 32 1 Winner",
+                "name": "Round of 32 1 Winner"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": null,
+              "team": {
+                "id": "9998",
+                "abbreviation": "RD32",
+                "displayName": "Round of 32 2 Winner",
+                "name": "Round of 32 2 Winner"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "760510",
+      "date": "2026-07-09T20:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14003,
+        "slug": "quarterfinals"
+      },
+      "competitions": [
+        {
+          "status": {
+            "type": {
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false
+            }
+          },
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": null,
+              "team": {
+                "id": "9997",
+                "abbreviation": "RD16",
+                "displayName": "Round of 16 1 Winner",
+                "name": "Round of 16 1 Winner"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": null,
+              "team": {
+                "id": "9996",
+                "abbreviation": "RD16",
+                "displayName": "Round of 16 2 Winner",
+                "name": "Round of 16 2 Winner"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "760520",
+      "date": "2026-07-14T20:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14004,
+        "slug": "semifinals"
+      },
+      "competitions": [
+        {
+          "status": {
+            "type": {
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false
+            }
+          },
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": null,
+              "team": {
+                "id": "9995",
+                "abbreviation": "QF",
+                "displayName": "Quarterfinal 1 Winner",
+                "name": "Quarterfinal 1 Winner"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": null,
+              "team": {
+                "id": "9994",
+                "abbreviation": "QF",
+                "displayName": "Quarterfinal 2 Winner",
+                "name": "Quarterfinal 2 Winner"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "760530",
+      "date": "2026-07-18T20:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14005,
+        "slug": "3rd-place-match"
+      },
+      "competitions": [
+        {
+          "status": {
+            "type": {
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false
+            }
+          },
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": null,
+              "team": {
+                "id": "9993",
+                "abbreviation": "SF",
+                "displayName": "Semifinal 1 Loser",
+                "name": "Semifinal 1 Loser"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": null,
+              "team": {
+                "id": "9992",
+                "abbreviation": "SF",
+                "displayName": "Semifinal 2 Loser",
+                "name": "Semifinal 2 Loser"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "760540",
+      "date": "2026-07-19T20:00Z",
+      "season": {
+        "year": 2026,
+        "type": 14006,
+        "slug": "final"
+      },
+      "competitions": [
+        {
+          "status": {
+            "type": {
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false
+            }
+          },
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": null,
+              "team": {
+                "id": "9991",
+                "abbreviation": "SF",
+                "displayName": "Semifinal 1 Winner",
+                "name": "Semifinal 1 Winner"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": null,
+              "team": {
+                "id": "9990",
+                "abbreviation": "SF",
+                "displayName": "Semifinal 2 Winner",
+                "name": "Semifinal 2 Winner"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "760415",
+      "date": "2026-06-11T19:00Z",
+      "season": {
+        "year": 2026,
+        "type": 13802,
+        "slug": "group-stage"
+      },
+      "competitions": [
+        {
+          "status": {
+            "type": {
+              "name": "STATUS_FULL_TIME",
+              "state": "post",
+              "completed": true
+            }
+          },
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "2",
+              "team": {
+                "id": "203",
+                "abbreviation": "MEX",
+                "displayName": "Mexico",
+                "name": "Mexico"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": "0",
+              "team": {
+                "id": "467",
+                "abbreviation": "RSA",
+                "displayName": "South Africa",
+                "name": "South Africa"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

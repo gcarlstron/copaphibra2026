@@ -26,6 +26,10 @@ class Settings:
     # Limita o tempo máximo que a página espera pela ESPN antes de renderizar com o
     # que já está no banco. Não afeta o caminho de background (sem orçamento).
     espn_sync_deadline_s: float = float(os.getenv("ESPN_SYNC_DEADLINE_S", "8"))
+    # Janela à frente (dias) para ingestão de jogos do mata-mata via ESPN.
+    # Default 30 cobre todo o mata-mata (R32 28/06 → Final 19/07 = 21 dias) a
+    # partir de qualquer dia de execução.
+    espn_lookahead_dias: int = int(os.getenv("ESPN_LOOKAHEAD_DIAS", "30"))
 
     # Intervalo (segundos) de auto-refresh da página quando há jogo ao vivo.
     auto_refresh_ao_vivo_s: int = int(os.getenv("AUTO_REFRESH_AO_VIVO_S", "60"))

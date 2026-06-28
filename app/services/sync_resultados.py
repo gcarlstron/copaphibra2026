@@ -15,6 +15,8 @@ Fluxo:
      background/standalone: abre sessão própria, isola erros e fecha a sessão.
 
   2. `sincronizar_resultados(db, agora, deadline=None)`:
+       - PRIMEIRO chama `ingerir_jogos_mata_mata` para criar/atualizar os jogos
+         agendados das fases do KO (calendário à frente).
        - Seleciona `Jogo` com `data_hora <= agora` e `status != encerrado`.
        - Agrupa por data (do campo `data_hora`).
        - Para cada data pendente chama `buscar_scoreboard_com_janela` (D-1, D, D+1).
@@ -24,6 +26,16 @@ Fluxo:
        - Abreviação sem de-para ou evento sem Jogo: incrementa contador e loga WARNING.
        - `deadline` (segundos de `time.monotonic()`): orçamento total das buscas.
        - Retorna `ResumoSync` com os contadores.
+
+  3. `ingerir_jogos_mata_mata(db, agora, deadline=None)`:
+       - Busca a ESPN com range agora.date() até agora.date() + espn_lookahead_dias.
+       - Para cada evento com season_slug em FASES_MATA_MATA:
+           * get-or-create da Rodada (ordem/nome), criada com aberta=False.
+           * get-or-create do Jogo por espn_event_id; se não existir, cria com
+             status=agendado. Se existir e não encerrado, atualiza nomes/data_hora
+             in-place (resolve placeholder → time real, preservando palpites).
+       - Faz commit/flush antes de retornar para que jogos recém-criados com
+         data_hora <= agora apareçam na seleção de pendentes do passo seguinte.
 
 Decisão de fuso (2026-06-19):
     O banco armazena horários da planilha (BRT/UTC-3) com label UTC. A ESPN agrupa
@@ -42,10 +54,11 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.models import Jogo
+from app.models import Jogo, Rodada
 from app.models.sync_state import SyncState
 from app.models.team_alias import TeamAlias
 from app.services.admin import lancar_resultado
@@ -59,7 +72,10 @@ from app.services.dashboard import (
 from app.services.espn import (
     EspnClientError,
     EventoEspn,
+    FASES_MATA_MATA,
     buscar_scoreboard_com_janela,
+    buscar_scoreboard_range,
+    fase_do_slug,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,6 +101,181 @@ class ResumoSync:
     revertidos_presos: int = 0
     ignorados_sem_depara: int = 0
     ignorados_sem_jogo: int = 0
+    # Contadores do mata-mata (ingerir_jogos_mata_mata — Fase 17)
+    rodadas_criadas: int = 0
+    jogos_criados: int = 0
+    jogos_atualizados_ko: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Ingestão do mata-mata — cria/atualiza jogos agendados via ESPN
+# ---------------------------------------------------------------------------
+
+
+def ingerir_jogos_mata_mata(
+    db: Session,
+    agora: datetime,
+    deadline: float | None = None,
+) -> ResumoSync:
+    """Cria e/ou atualiza jogos agendados das fases do mata-mata via ESPN.
+
+    Busca um range de datas (agora → agora + espn_lookahead_dias) com uma única
+    chamada HTTP. Para cada evento cujo season_slug pertença a FASES_MATA_MATA:
+
+    - get-or-create da Rodada (por ordem), criada com aberta=False.
+    - get-or-create do Jogo por espn_event_id:
+        * Não existe → cria com status=agendado (pula se data_hora for None).
+        * Existe e NÃO encerrado → atualiza nomes e data_hora se mudaram
+          (resolução in-place de placeholder para time real, palpites intactos).
+        * Existe e ENCERRADO → não mexe (caminho de resultado já encerrou).
+
+    Idempotente: rodar duas vezes não duplica rodadas nem jogos.
+    Não reabrir rodada existente (não muda `aberta`).
+
+    Retorna um ResumoSync parcial com os contadores do mata-mata (lancados=0, etc.).
+    """
+    resumo = ResumoSync()
+    settings = get_settings()
+
+    # Verificação de deadline antes de qualquer I/O
+    if deadline is not None and time.monotonic() >= deadline:
+        logger.warning("Deadline já estourado; ingestão do mata-mata pulada.")
+        return resumo
+
+    inicio = agora.date()
+    fim = inicio + timedelta(days=settings.espn_lookahead_dias)
+
+    try:
+        eventos = buscar_scoreboard_range(inicio, fim, deadline=deadline)
+    except EspnClientError as exc:
+        logger.warning("ESPN indisponível para range KO %s–%s: %s", inicio, fim, exc)
+        return resumo
+    except Exception:
+        logger.warning(
+            "Erro inesperado ao buscar ESPN range KO %s–%s", inicio, fim, exc_info=True
+        )
+        return resumo
+
+    if not eventos:
+        return resumo
+
+    # Carrega de-para abreviacao → nome PT (para times reais do R32)
+    depara_stmt = select(TeamAlias.abreviacao, TeamAlias.nome)
+    depara: dict[str, str] = {r.abreviacao: r.nome for r in db.execute(depara_stmt).all()}
+
+    # Cache de rodadas por ordem (evita SELECT repetido por evento)
+    rodadas_cache: dict[int, Rodada] = {}
+
+    for ev in eventos:
+        fase = fase_do_slug(ev.season_slug)
+        if fase is None:
+            continue  # slug não é mata-mata (ex.: "group-stage")
+
+        ordem, nome_rodada = fase
+
+        # get-or-create da Rodada
+        if ordem not in rodadas_cache:
+            rodada = db.scalar(select(Rodada).where(Rodada.ordem == ordem))
+            if rodada is None:
+                rodada = Rodada(nome=nome_rodada, ordem=ordem, aberta=False)
+                db.add(rodada)
+                db.flush()
+                resumo.rodadas_criadas += 1
+                logger.info("Rodada KO criada: ordem=%d nome=%r", ordem, nome_rodada)
+            rodadas_cache[ordem] = rodada
+
+        rodada = rodadas_cache[ordem]
+
+        if not ev.event_id:
+            logger.warning("Evento ESPN sem event_id; ignorando.")
+            continue
+
+        # Resolve nomes: times reais → de-para PT; placeholders → displayName da ESPN
+        nome_casa = depara.get(ev.abrev_casa) or ev.nome_casa_espn or ev.abrev_casa
+        nome_visitante = depara.get(ev.abrev_visitante) or ev.nome_visitante_espn or ev.abrev_visitante
+
+        # get-or-create do Jogo por espn_event_id
+        jogo = db.scalar(select(Jogo).where(Jogo.espn_event_id == ev.event_id))
+
+        if jogo is None:
+            # Criar novo jogo — pula se sem data_hora (não sabemos quando jogar)
+            if ev.data_hora is None:
+                logger.warning(
+                    "Evento ESPN %r sem data_hora; jogo não criado.", ev.event_id
+                )
+                continue
+            try:
+                jogo = Jogo(
+                    rodada_id=rodada.id,
+                    espn_event_id=ev.event_id,
+                    data_hora=ev.data_hora,
+                    time_casa=nome_casa,
+                    time_visitante=nome_visitante,
+                    status=STATUS_AGENDADO,
+                )
+                db.add(jogo)
+                db.flush()
+                resumo.jogos_criados += 1
+                logger.info(
+                    "Jogo KO criado: event_id=%r %r vs %r data=%s",
+                    ev.event_id,
+                    nome_casa,
+                    nome_visitante,
+                    ev.data_hora,
+                )
+            except IntegrityError:
+                # UniqueConstraint (rodada_id, time_casa, time_visitante) violada
+                # — pode ocorrer se dois eventos de KO ainda tiverem o mesmo
+                # placeholder de times. Rollback seguro: pula este jogo.
+                db.rollback()
+                logger.warning(
+                    "IntegrityError ao criar jogo KO event_id=%r; pulando.",
+                    ev.event_id,
+                )
+        else:
+            # Jogo já existe — só atualiza se NÃO encerrado e houve mudança
+            if jogo.status == STATUS_ENCERRADO:
+                continue
+
+            mudou = False
+            if jogo.time_casa != nome_casa:
+                jogo.time_casa = nome_casa
+                mudou = True
+            if jogo.time_visitante != nome_visitante:
+                jogo.time_visitante = nome_visitante
+                mudou = True
+            # Normaliza naive→aware antes de comparar: o SQLite devolve data_hora
+            # naive (sem tz), enquanto ev.data_hora é aware (em_fuso_dos_dados).
+            # Sem isso, naive != aware é sempre True → update espúrio a cada sync.
+            data_hora_atual = jogo.data_hora
+            if data_hora_atual is not None and data_hora_atual.tzinfo is None:
+                data_hora_atual = data_hora_atual.replace(tzinfo=timezone.utc)
+            if ev.data_hora is not None and data_hora_atual != ev.data_hora:
+                jogo.data_hora = ev.data_hora
+                mudou = True
+
+            if mudou:
+                resumo.jogos_atualizados_ko += 1
+                logger.info(
+                    "Jogo KO atualizado in-place: event_id=%r %r vs %r",
+                    ev.event_id,
+                    nome_casa,
+                    nome_visitante,
+                )
+
+    # Commit antes de retornar para que jogos recém-criados com
+    # data_hora <= agora apareçam na seleção de pendentes do sync de resultados.
+    db.commit()
+
+    if resumo.rodadas_criadas or resumo.jogos_criados or resumo.jogos_atualizados_ko:
+        logger.info(
+            "Ingestão KO: %d rodadas criadas, %d jogos criados, %d jogos atualizados.",
+            resumo.rodadas_criadas,
+            resumo.jogos_criados,
+            resumo.jogos_atualizados_ko,
+        )
+
+    return resumo
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +298,14 @@ def sincronizar_resultados(
     página renderiza com o que já estiver no banco.
     """
     resumo = ResumoSync()
+
+    # 0. Ingestão do mata-mata — cria/atualiza jogos agendados das fases KO.
+    #    Faz commit internamente; os jogos recém-criados com data_hora <= agora
+    #    aparecem na seleção de pendentes do passo seguinte.
+    resumo_ko = ingerir_jogos_mata_mata(db, agora, deadline=deadline)
+    resumo.rodadas_criadas = resumo_ko.rodadas_criadas
+    resumo.jogos_criados = resumo_ko.jogos_criados
+    resumo.jogos_atualizados_ko = resumo_ko.jogos_atualizados_ko
 
     # 1. Seleciona jogos pendentes (antes de agora, não encerrados)
     stmt = select(
@@ -477,12 +676,16 @@ def sincronizar_se_necessario(
     logger.info("Iniciando sincronização de resultados ESPN.")
     resumo = sincronizar_resultados(db, agora_utc, deadline=deadline)
     logger.info(
-        "Sync ESPN concluído: %d lançados, %d ao vivo, %d revertidos, %d sem de-para, %d sem jogo.",
+        "Sync ESPN concluído: %d lançados, %d ao vivo, %d revertidos, "
+        "%d sem de-para, %d sem jogo | KO: %d rodadas, %d jogos criados, %d atualizados.",
         resumo.lancados,
         resumo.atualizados_ao_vivo,
         resumo.revertidos_presos,
         resumo.ignorados_sem_depara,
         resumo.ignorados_sem_jogo,
+        resumo.rodadas_criadas,
+        resumo.jogos_criados,
+        resumo.jogos_atualizados_ko,
     )
     return True
 
