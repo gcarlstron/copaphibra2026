@@ -18,6 +18,14 @@ class Jogo(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     rodada_id: Mapped[int] = mapped_column(ForeignKey("rodadas.id"), nullable=False, index=True)
+    # Identificador estável do evento na ESPN (ex.: "760486"). Usado no mata-mata
+    # para fazer get-or-create por ID em vez de por par de times, permitindo
+    # atualização in-place quando um placeholder se torna um time real.
+    # NULL para jogos da fase de grupos (importados da planilha sem ESPN ID).
+    # Múltiplos NULL não violam a constraint UNIQUE no SQLite nem no Postgres.
+    espn_event_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, unique=True, index=True
+    )
     data_hora: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     time_casa: Mapped[str] = mapped_column(String(120), nullable=False)
     time_visitante: Mapped[str] = mapped_column(String(120), nullable=False)

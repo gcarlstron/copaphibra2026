@@ -327,13 +327,177 @@ Os itens abaixo eram ajustes/dívida — **todos resolvidos** (ALTA, MÉDIA, BAI
 - Mais índices (já há nas FKs + `data_hora`/`ordem`/`chave`); schemas Pydantic formais (YAGNI até haver payload JSON); Enum/CHECK p/ `status`; advisory locks/Redis p/ o throttle; filtrar `Usuario.ativo` no ramo do "próprio palpite" (inofensivo).
 - `httpx2` confirmado como dependência legítima (Pydantic Services / Tom Christie), **não** é typosquat.
 
+---
+
+## Fase 17 — Ingestão automática do mata-mata via ESPN (URGENTE — R32 começa 28/06)
+
+Hoje (27/06) fecha a fase de grupos; o **Round of 32 começa amanhã, 28/06**. O sync, que hoje
+é só *orientado a resultado* (busca datas de jogos que JÁ existem e atualiza placar), passa a
+ser também *orientado a calendário*: olha uma janela À FRENTE na ESPN e **cria** os jogos
+agendados do mata-mata que ainda não existem, fazendo get-or-create da Rodada correspondente.
+
+> **Atualização de desenho (2026-06-27, após teste do payload ESPN ao vivo):** mudanças que
+> reescreveram a quebra original — (1) **placeholders agora SÃO criados** (não mais ignorados):
+> o usuário quer poder "se adiantar" e palpitar jogos do KO com times ainda indefinidos
+> (R16→Final); (2) **nova migração** adiciona `Jogo.espn_event_id` (chave estável p/ amarrar o
+> jogo enquanto os times se resolvem); (3) o 3º lugar é **`3rd-place-match`** (não `3rd-place`);
+> (4) **uma única chamada** com range `dates=AAAAMMDD-BBBBMMDD` cobre todo o KO (32 eventos numa
+> chamada; `leagues[0].calendar` veio VAZIO — não usar); (5) o **R32 já está com times reais**
+> hoje na ESPN (RSA×CAN, BRA×JPN…) — placeholders valem de R16 p/ frente; (6) nome de exibição
+> do placeholder = `name`/`displayName` da ESPN (a abreviação não serve — no R16 vem "RD32" repetida).
+
+**Decisões já tomadas com o usuário (não reabrir):**
+1. **Rodadas do KO: o SYNC cria sozinho** — quando o 1º jogo de uma fase aparece na ESPN
+   (por `event.season.slug`), get-or-create da Rodada já com `aberta=False`.
+2. **Prazo: MANUAL pelo admin** — o usuário abre cada rodada e define a janela em `/admin/rodadas`
+   (tela que já existe). **Sem UI de admin nova.**
+3. **Pontuação INALTERADA** — mantém a LEGENDA. ESPN reporta o placar com prorrogação mas SEM
+   pênaltis (1–1 decidido nos pênaltis conta empate 1–1; gols de prorrogação contam).
+   **Não reimplementar scoring** — reusa `admin.lancar_resultado`, como o sync já faz.
+4. **Jogos do KO são criados MESMO com times indefinidos** (placeholder), para palpite antecipado.
+   Quando o placeholder vira time real, o **MESMO** jogo é atualizado in-place → **palpites preservados**.
+
+**Desenho técnico (validado contra o payload ESPN ao vivo + código atual):**
+- `EventoEspn` (`app/services/espn.py`) passa a extrair, além do que já tem: `season_slug`
+  (`event.season.slug`), `event_id` (`event.id`), `data_hora` (`event.date`, ISO) e os **nomes de
+  exibição** dos dois lados (`competitor.team.name`/`displayName`) — usados quando é placeholder,
+  pois a abreviação não distingue (no R16 vem "RD32" repetida).
+- 6 slugs do KO (confirmados ao vivo): `round-of-32`, `round-of-16`, `quarterfinals`,
+  `semifinals`, `3rd-place-match`, `final`.
+- Mapa slug → (nome PT, ordem): "16-avos de final" (4), "Oitavas de final" (5), "Quartas de
+  final" (6), "Semifinais" (7), "Disputa de 3º lugar" (8), "Final" (9). Grupos = ordem 1–3.
+- **Chave estável do jogo = `espn_event_id`** (nova coluna). O get-or-create de Jogo é por
+  `event_id`, NÃO por `(rodada, times)` — porque os nomes dos times mudam (placeholder → real)
+  e o evento permanece o mesmo. Quando o placeholder se resolve, o sync atualiza `time_casa`/
+  `time_visitante` (e `data_hora`) do jogo existente, **sem recriar** → os palpites já feitos
+  continuam atrelados ao mesmo `jogo_id`.
+- Resolução do nome do time por lado: se a abreviação está no `team_alias` → nome PT real; senão
+  → usa o `name`/`displayName` da ESPN como rótulo do placeholder (ex.: "Round of 32 1 Winner",
+  "Quarterfinal 1 Winner", "Semifinal 1 Loser").
+- No sync, para cada evento de slug KO: get-or-create da Rodada (`aberta=False`) → get-or-create
+  do Jogo por `espn_event_id` (status agendado, `data_hora` da ESPN). A atualização de
+  resultado/ao-vivo que já existe passa a cobrir esses jogos quando `data_hora <= agora`.
+- **Busca por range:** uma única chamada `dates=AAAAMMDD-BBBBMMDD` cobrindo a janela à frente do
+  KO (não usar `calendar`, veio vazio). Tempo via `app/services/tempo.py::agora()` (ADR-002, BRT).
+
+**Riscos a controlar (refletidos nas tarefas):** (a) a busca à frente NÃO pode estourar o
+`deadline` nem o throttle no caminho síncrono do dashboard (`GET /`); (b) confirmar ao vivo que
+`season.slug` e as abreviações dos classificados batem com o de-para, e que `event.id` é estável
+entre o estado placeholder e o resolvido; (c) a migração nova roda na Neon no deploy.
+
+Ordem de execução: **backend é dono do contrato** (17a→17b→17c→17d→17e→testes 17f), depois
+**verificação ao vivo (17g)** e por fim **UI de verificação (17h)**.
+
+> **Status de implementação (2026-06-27):** 17a–17f + 17h concluídos; **289 testes passando**.
+> Notas: (1) a lógica de 17c+17d ficou **inline** em `ingerir_jogos_mata_mata` (não como helpers
+> separados) — get-or-create de Rodada por `ordem` (`aberta=False`, não reabre) e de Jogo por
+> `espn_event_id` com resolução in-place. (2) Contadores no `ResumoSync`: `rodadas_criadas`,
+> `jogos_criados`, `jogos_atualizados_ko`. (3) **Correção pós-implementação:** a comparação de
+> `data_hora` na resolução in-place era naive×aware (SQLite devolve naive) → update espúrio a cada
+> sync; normalizada (`tzinfo=UTC` se naive) e o teste de idempotência reforçado com `expire_all()`
+> + assert `jogos_atualizados_ko == 0`. Inofensivo em produção (Postgres preserva tz), mas corrigido.
+> (4) **17g parcial:** a inspeção ao vivo (27/06) confirmou os 6 slugs (incl. `3rd-place-match`), R32
+> já com times reais, placeholders de R16→Final com `displayName` útil e `event.id` presente/único
+> por slot; **falta** confirmar a ESTABILIDADE do `event.id` placeholder→resolvido (só verificável
+> quando o R32 começar a definir o R16). (5) Falta o **Deploy**.
+
+### 17a — Migração + model: `Jogo.espn_event_id` (chave estável da ESPN)
+- [x] ✅ Nova migração Alembic (`down_revision` = head atual `d4e5f6a7b8c9`): adiciona coluna
+  `espn_event_id` em `jogos` — `String(32)`, `nullable=True`, **unique** + **index** (jogos legados
+  da fase de grupos ficam `NULL`; índice único tolera múltiplos NULL no SQLite e no Postgres). Campo
+  correspondente no model `Jogo` (`app/models/jogo.py`). Portável SQLite↔Postgres (modo **batch**
+  como na `d4e5f6a7b8c9`, pois SQLite não faz `ADD CONSTRAINT`). **Nunca editar migração já aplicada**
+  — só criar nova. `tests/`: upgrade→downgrade→upgrade; inserir 2 jogos com `espn_event_id` NULL não
+  viola o unique; duplicar `espn_event_id` não-nulo → IntegrityError. **Esta é a 1ª tarefa** (as
+  demais dependem da coluna) → @backend
+
+### 17b — Parser ESPN: `season_slug` + `event_id` + `data_hora` + nomes (`services/espn.py`)
+- [x] ✅ `parse_eventos` passa a extrair, em campos novos de `EventoEspn` (todos defensivos, default
+  vazio/None, sem descartar o evento): `season_slug` (`event.season.slug`), `event_id`
+  (`event.id`, str), `data_hora` (`event.date` ISO → datetime; reusa a convenção de fuso BRT do
+  módulo), e os **nomes de exibição** de cada lado (`competitor.team.name`/`displayName`) — além da
+  abreviação que já existe. Constantes dos 6 slugs do KO (incl. **`3rd-place-match`**); mapa
+  slug → (nome PT, ordem 4–9) + helper puro `fase_do_slug(slug) -> (nome, ordem) | None` (`None`
+  para `group-stage`/desconhecido). `tests/test_espn.py`: fixture do payload KO real — extrai
+  `season_slug`/`event_id`/`data_hora`/nomes; slug ausente → vazio (evento sobrevive); `fase_do_slug`
+  acerta os 6 do KO (com `3rd-place-match`) e devolve None p/ grupos/desconhecido. Depende de **17a**
+  (só p/ coerência; pode ir em paralelo) → @backend
+
+### 17c — Get-or-create de Rodada por fase do KO (`services/sync_resultados.py`)
+- [x] ✅ Helper `_get_or_create_rodada_ko(db, nome, ordem) -> Rodada`: busca por `ordem` (única);
+  cria com `aberta=False`, `abertura=None`, `fechamento=None` se não existir; idempotente.
+  **Não mexe em rodada existente** (preserva janela/`aberta` que o admin já tenha definido — o admin
+  é dono do prazo). Depende de **17b** (usa o mapa de fases). `tests/test_sync_resultados.py`: cria
+  na 1ª vez; 2ª chamada reusa (não duplica); **não reabre** rodada que o admin abriu; ordem única
+  respeitada → @backend
+
+### 17d — Get-or-create de Jogo do KO por `event_id` + resolução de placeholder (`services/sync_resultados.py`)
+- [x] ✅ Helper que, para um `EventoEspn` de slug KO, resolve **cada lado** ao nome do time: abreviação
+  no `team_alias` → nome PT real; senão → `name`/`displayName` da ESPN (rótulo de placeholder, ex.:
+  "Quarterfinal 1 Winner"). Get-or-create do Jogo **por `espn_event_id`** (NÃO por times):
+  - **Não existe:** cria com `espn_event_id`, `rodada_id` (da 17c), `status=agendado`, `data_hora`
+    da ESPN, os nomes resolvidos — **mesmo que sejam placeholders** (palpite antecipado).
+  - **Existe e NÃO encerrado:** se o placeholder virou time real (nome mudou), **atualiza in-place**
+    `time_casa`/`time_visitante` e `data_hora` do MESMO jogo — **sem recriar**, preservando os
+    palpites já atrelados ao `jogo_id`. Idempotente quando nada mudou.
+  - **Existe e ENCERRADO:** não toca (resultado é autoritativo — consistente com o importador).
+  - Trata `IntegrityError` (corrida no unique de `espn_event_id`) → re-query do existente.
+  Depende de **17a** (coluna) + **17c**. `tests/test_sync_resultados.py`: cria jogo com 2 placeholders;
+  re-exec com os mesmos dados não duplica; **placeholder→time real preserva o palpite** (mesmo
+  `jogo_id`, palpite intacto, nomes atualizados); jogo encerrado não é sobrescrito; corrida no unique
+  → reusa → @backend
+
+### 17e — Passo "calendário à frente" + busca por range no `sincronizar_resultados`
+- [x] ✅ Novo passo no `sincronizar_resultados` que percorre os eventos de slug KO e chama 17c+17d
+  (get-or-create Rodada→Jogo, criando placeholders). A busca à frente do KO usa **uma única chamada
+  por range** `dates=AAAAMMDD-BBBBMMDD` (janela configurável; **não** usar `calendar` — veio vazio),
+  cobrindo de `agora` até `agora + ESPN_LOOKAHEAD_DIAS`. Reusa o cliente ESPN (passa a aceitar range);
+  **respeita o `deadline`** (mesma guarda dos passos 5/5b: estourou → pula a criação) e o **throttle**
+  existente — sem multiplicar fetches no caminho síncrono do dashboard. Não regride o fluxo de
+  resultado/ao-vivo de grupos (só AGREGA). Contadores novos no `ResumoSync` (ex.: `rodadas_criadas`,
+  `jogos_criados`, `jogos_resolvidos`). Depende de **17c, 17d**. `tests/test_sync_resultados.py`:
+  fixture KO (R32 com times reais + R16 com placeholders) → cria as rodadas (ordens 4/5, `aberta=False`)
+  e os jogos; idempotência (2ª exec não duplica); **deadline estourado → não cria**; jogo criado vira
+  pendente e na exec seguinte é pontuado por `lancar_resultado` quando encerra → @backend
+
+### 17f — Config + teste de não-regressão da fase de grupos
+- [x] ✅ `config.py`: `espn_lookahead_dias` (janela à frente do range, ex.: 12 — cobre o KO inteiro) e o
+  que 17e precisar. Garantir que o caminho de grupos (jogos que já existem) **continua idêntico** — o
+  passo de calendário só agrega. `tests/test_sync_resultados.py`: cenário de grupos sem evento KO →
+  nenhuma rodada/jogo novo criado (no-op); suíte inteira do sync segue verde. Depende de **17e** → @backend
+
+### 17g — Validação AO VIVO contra a ESPN (R32 + KO) — antes de confiar no automático
+- [~] _(parcial — 2026-06-27)_ Rodar contra a ESPN real (range a partir de 28/06): confirmar que (1) os `season.slug` batem
+  com os 6 esperados (incl. **`3rd-place-match`**); (2) o **R32 já vem com times reais** e as
+  abreviações batem com o `team_alias` (0 divergência — como na Fase 10f); (3) os placeholders de
+  R16→Final trazem `name`/`displayName` úteis ("…Winner/Loser") e são criados como jogo; (4) o
+  **`event.id` é estável** entre o estado placeholder e o resolvido (premissa central da resolução
+  in-place — se NÃO for, escalar antes do deploy); (5) o range + `deadline` não estoura o tempo do
+  dashboard. Registrar o resultado (igual à 10f). Depende de **17e** (código pronto) → @backend
+
+### 17h — UI: VERIFICAR (ajustar só se necessário)
+- [x] ✅ As telas (dashboard, `/jogos`, `/palpites`, detalhe) já renderizam rodadas/jogos de forma
+  genérica — provavelmente funcionam sem mudança. Tarefa = **verificar** com rodadas KO criadas
+  (uma com times reais, uma com placeholders): nome da rodada KO renderiza bem (ordens 4–9, nomes
+  longos como "Disputa de 3º lugar"); **rótulos de placeholder** longos em inglês ("Quarterfinal 1
+  Winner") não quebram o layout; macro `status_pill` cobre os estados; escudo do **placeholder** não
+  resolve (sem de-para) → fallback funciona; escudos dos times reais resolvem. **Ajustar só o que
+  quebrar.** Depende de **17c/17d** (precisa de rodada/jogo KO no banco) e idealmente de **17g** → @frontend
+
+### Deploy da Fase 17
+- [ ] **Tem migração** (17a): o `startCommand` do Render roda `alembic upgrade head` e aplica a nova
+  migração na Neon (ver risco A6 do DEPLOY.md — testar contra cópia antes se houver dúvida). Push do
+  código → Render builda; o sync de calendário passa a rodar no dashboard em produção. Confirmar com
+  o R32 já em andamento que as rodadas/jogos (incl. placeholders do R16+) surgiram, que o admin
+  consegue abrir a rodada + definir a janela em `/admin/rodadas`, e que ao resolver um placeholder o
+  palpite antecipado é preservado.
+
+---
+
 ## Backlog / Fase 2 (futuro)
 
-- [ ] **Mata-mata — ingestão automática dos jogos via ESPN** _(pesquisa feita 2026-06-23; quebrar em fases/tarefas depois)_
-  - _**Decidido:** o sync (gatilho do dashboard) passa a **criar** os jogos agendados do mata-mata; admin corrige manualmente; **pontuação inalterada** (resultado da ESPN, ignorando pênaltis — a confirmar se também descarta gols da prorrogação)._
-  - _**Endpoint (testado ao vivo):** usar o `/scoreboard?dates=` que o app já consome — **não** o `/events` (este não traz fase/rodada). Aceita range `dates=YYYYMMDD-YYYYMMDD` (R32 inteiro numa chamada). Fase por jogo em **`event.season.slug`**: `group-stage`, `round-of-32`, `round-of-16`, `quarterfinals`, `semifinals`, `3rd-place`, `final`. O `leagues[0].calendar` dá o mapa fase→datas (R32 28/jun–3/jul · Oitavas 4–7/jul · Quartas 9–11/jul · Semis 14–15/jul · 3º 18/jul · Final 19/jul)._
-  - _**Regra-chave:** o KO já aparece agendado com **placeholders** (`2B`, `RD16 W4`, `3RD`) até os times definirem; só criar/atualizar o Jogo quando os **dois times forem reais** (resolvíveis no `team_alias`)._
-  - _**Desenho:** `parse_eventos` extrai `season.slug` (campo novo em `EventoEspn`); mapa slug→`Rodada`; criação de agendados no sync (janela à frente via calendar/range). Sem endpoint novo. A definir na quebra: modelo das rodadas (admin cria × sync cria) e o prazo de cada uma._
+- _**Mata-mata — ingestão automática dos jogos via ESPN:** promovido para a **Fase 17** (acima),
+  formalizado em 2026-06-27 para a urgência do R32 (28/06). Pesquisa/decisões originais preservadas lá._
 - [ ] **Exportar dados para Excel (.xlsx)** — resultado geral (classificação), jogos e palpites.
   _A definir: gerar via rota admin (download) ou via script; uma aba por seção (Classificação / Jogos / Palpites); reusar `openpyxl` (já no `requirements.txt`). Hoje existe o `scripts/relatorio.py` (read-only, só console) como base da leitura desses mesmos dados — pensar melhor no formato/entrega depois._
 - [ ] **Painéis de BI do Grafana** — desempenho por jogador e geral. Datasource: o Grafana lê o **mesmo Postgres (Neon)** via **role read-only** dedicado (não a credencial da app). Roadmap em 3 passos:
