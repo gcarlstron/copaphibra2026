@@ -12,6 +12,7 @@ from app.routers.estatisticas import router as estatisticas_router
 from app.routers.jogos import router as jogos_router
 from app.routers.palpites import router as palpites_router
 from app.routers.regras import router as regras_router
+from app.routers.tarefas import router as tarefas_router
 
 
 def create_app() -> FastAPI:
@@ -39,6 +40,7 @@ def create_app() -> FastAPI:
     app.include_router(dashboard_router)
     app.include_router(estatisticas_router)
     app.include_router(admin_router)
+    app.include_router(tarefas_router)
 
     @app.get("/healthz")
     def healthcheck() -> dict[str, str]:

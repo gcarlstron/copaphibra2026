@@ -17,6 +17,10 @@ class Settings:
 
     session_https_only: bool = os.getenv("SESSION_HTTPS_ONLY", "0") == "1"
 
+    # Token do endpoint de sync acionado por agendador externo (GitHub Actions).
+    # Vazio = endpoint desabilitado (responde 503). Defina em produção.
+    sync_token: str = os.getenv("SYNC_TOKEN", "")
+
     espn_sync_intervalo_min: int = int(os.getenv("ESPN_SYNC_INTERVALO_MIN", "15"))
     # Intervalo curto usado quando há jogo ao vivo (ou recém-iniciado) — busca
     # quase em tempo real enquanto a bola rola.
@@ -24,8 +28,11 @@ class Settings:
     espn_timeout_s: float = float(os.getenv("ESPN_TIMEOUT_S", "5"))
     # Orçamento total (segundos) para o sync síncrono no carregamento do dashboard.
     # Limita o tempo máximo que a página espera pela ESPN antes de renderizar com o
-    # que já está no banco. Não afeta o caminho de background (sem orçamento).
-    espn_sync_deadline_s: float = float(os.getenv("ESPN_SYNC_DEADLINE_S", "8"))
+    # que já está no banco. Não afeta o caminho de background/cron (sem orçamento).
+    # Default 15s: no Render free (instância fraca + latência à ESPN) 8s era curto
+    # demais e o sync reivindicava o slot mas estourava antes de registrar. O cron
+    # (/tarefas/sync) roda SEM deadline e é a garantia de completude.
+    espn_sync_deadline_s: float = float(os.getenv("ESPN_SYNC_DEADLINE_S", "15"))
     # Janela à frente (dias) para ingestão de jogos do mata-mata via ESPN.
     # Default 30 cobre todo o mata-mata (R32 28/06 → Final 19/07 = 21 dias) a
     # partir de qualquer dia de execução.

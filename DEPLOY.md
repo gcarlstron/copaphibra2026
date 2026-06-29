@@ -88,6 +88,31 @@ Mitigações:
   continua servindo**. ⚠️ `preDeployCommand` **só existe em instâncias pagas**;
   no free tier, mantenha no `startCommand` com as mitigações acima.
 
+### A7. Sync autônomo (cron) — registrar resultados sem ninguém no site
+No free tier o serviço **hiberna** e o sync só rodava em visitas ao dashboard — então, se ninguém
+estava no site na hora do jogo, o resultado não entrava (e o `deadline` de 8s era curto demais no
+Render, fazendo o sync reivindicar o slot mas estourar antes de registrar). A correção (Fase 18):
+
+1. **Endpoint `POST /tarefas/sync`** roda o sync **sem deadline** (sempre completa), protegido por
+   token. Defina a env **`SYNC_TOKEN`** no Render (Environment) com um valor forte:
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+2. **GitHub Actions** (`.github/workflows/sync-espn.yml`) bate nesse endpoint a cada 15 min. No
+   repositório (Settings → Secrets and variables → Actions):
+   - **Secret** `SYNC_TOKEN` = **o mesmo valor** definido no Render.
+   - **Variable** `SYNC_URL` = URL base do app (ex.: `https://copa-phibra.onrender.com`).
+   Dá para disparar manualmente em **Actions → Sync resultados ESPN → Run workflow**.
+3. **Custo/duração:** repositório privado tem ~2000 min/mês grátis de Actions; `*/15` ≈ 96 runs/dia
+   (~1 min cada). A Copa é finita — **desabilite o workflow após a Final (19/07)**. Para registrar
+   mais rápido no mata-mata, troque o cron para `*/10` ou `*/5` (gasta mais minutos).
+4. **`ESPN_SYNC_DEADLINE_S`** (default 15): é o tempo máximo que o dashboard espera a ESPN antes de
+   renderizar com o que há no banco. No Render, **não baixe de 15**; pode subir (ex.: 20) se notar
+   resultados demorando a entrar na carga da página. O cron independe desse valor.
+
+> A granularidade fina de jogos **ao vivo** continua vindo do auto-refresh de 60s da própria página
+> enquanto alguém assiste; o cron é a rede de segurança para quando ninguém está no site.
+
 ---
 
 # Opção B — Servidor próprio / VM

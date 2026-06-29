@@ -494,6 +494,36 @@ Ordem de execução: **backend é dono do contrato** (17a→17b→17c→17d→17
 
 ---
 
+## Fase 18 — Sync autônomo via cron + deadline (2026-06-29)
+
+**Sintoma (R32 ao vivo):** jogos do mata-mata não registravam o resultado e jogos ao vivo não
+apareciam, **mesmo abrindo o site**. Diagnóstico ao vivo contra a Neon + ESPN:
+- A **lógica está correta** — rodar `sincronizar_resultados` direto (sem deadline) registrou na hora
+  `Brasil 2×1 Japão` e marcou `Alemanha → em_andamento`. Pareamento, de-para e criação dos jogos OK.
+- **Causa raiz:** o sync só dispara no `GET /` (dashboard) e, no **Render free** (instância fraca +
+  latência à ESPN + cold start), o **`deadline=8s` era curto demais**: o sync **reivindicava o slot**
+  (gravava `ultima_execucao`, ativando o throttle) mas **estourava antes de buscar/registrar**. Os
+  acessos seguintes caíam no throttle → nada entrava. Some-se a hibernação do free tier (ninguém no
+  site = nenhum disparo) e o `auto_refresh` que só liga com jogo ao vivo **já no banco** (galinha-e-ovo).
+
+- [x] ✅ **Endpoint `POST /tarefas/sync`** (`app/routers/tarefas.py`, registrado no `main.py`) — dispara
+  `disparar_sync_se_necessario` (sessão própria, **SEM deadline** → sempre completa) protegido por token
+  (`SYNC_TOKEN`, header `X-Sync-Token`, `secrets.compare_digest`). Sem token = 503; token errado = 401.
+  `tests/test_tarefas_sync.py` (503/401/401-ausente/200) — 4 testes → @backend — 2026-06-29
+- [x] ✅ **GitHub Actions cron** (`.github/workflows/sync-espn.yml`) bate no endpoint a cada 15 min
+  (`workflow_dispatch` p/ disparo manual). Mantém o bolão atualizado sem ninguém no site e acorda o
+  Render. Usa Secret `SYNC_TOKEN` + Variable `SYNC_URL`. **Desabilitar após a Final (19/07).** → 2026-06-29
+- [x] ✅ **`ESPN_SYNC_DEADLINE_S` default 8 → 15** (`config.py`) — folga no caminho síncrono do dashboard
+  no Render. O cron (sem deadline) é a garantia de completude. `render.yaml`/`.env.example`/`DEPLOY.md`
+  atualizados (env `SYNC_TOKEN`). → 2026-06-29
+- [x] ✅ **Correção de dados imediata:** `Brasil 2×1 Japão` registrado e `Alemanha` marcada ao vivo na
+  Neon (via sync direto), enquanto o deploy não sobe. → 2026-06-29
+- [ ] **Deploy:** merge p/ `main` → Render builda. **Antes/depois:** definir `SYNC_TOKEN` na env do Render
+  e o Secret `SYNC_TOKEN` + Variable `SYNC_URL` no GitHub. (Opcional imediato: subir `ESPN_SYNC_DEADLINE_S`
+  na env do Render já dá fôlego sem esperar o deploy.)
+
+---
+
 ## Backlog / Fase 2 (futuro)
 
 - _**Mata-mata — ingestão automática dos jogos via ESPN:** promovido para a **Fase 17** (acima),

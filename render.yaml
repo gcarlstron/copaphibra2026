@@ -16,3 +16,8 @@ services:
         value: "3.11.9"
       - key: DATABASE_URL
         sync: false
+      # Token do endpoint /tarefas/sync (cron externo do GitHub Actions).
+      # Defina o MESMO valor aqui e no Secret SYNC_TOKEN do repositório no GitHub.
+      # Gere com: python -c "import secrets; print(secrets.token_hex(32))"
+      - key: SYNC_TOKEN
+        sync: false
