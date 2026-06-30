@@ -5,16 +5,14 @@ name: Sync resultados ESPN
 # ociosos e o sync só rodava em visitas humanas — este cron é a rede de segurança
 # que registra resultados (e acorda o serviço) sem depender de ninguém acessar.
 #
-# O endpoint roda o sync SEM deadline, então sempre completa o registro. O throttle
-# (SyncState) faz a maioria das chamadas saírem baratas (só a 1ª de cada janela bate
-# na ESPN). A granularidade fina de jogos ao vivo continua vindo do auto-refresh de
-# 60s da própria página quando alguém está assistindo.
+# O endpoint é ABERTO (sem token): a ação é inofensiva — só dispara a leitura de
+# resultados da ESPN, com throttle (SyncState), que faz a maioria das chamadas saírem
+# baratas (só a 1ª de cada janela bate na ESPN). A granularidade fina de jogos ao vivo
+# continua vindo do auto-refresh de 60s da própria página quando alguém está assistindo.
 #
-# Configuração necessária (Settings do repositório):
-#   - Secret  SYNC_TOKEN : mesmo valor da env SYNC_TOKEN no Render.
-#   - Variable SYNC_URL  : URL base do app, ex. https://copa-phibra.onrender.com
+# Sem configuração: a URL do app está fixa abaixo. Se a URL do Render mudar, edite-a aqui.
 #
-# Custo: repositório privado tem ~2000 min/mês grátis de Actions; a cada ~1 min/run,
+# Custo: repositório tem ~2000 min/mês grátis de Actions; a cada ~1 min/run,
 # */15 ≈ 96 runs/dia. A Copa é finita (Final 2026-07-19) — DESABILITE este workflow
 # depois da Final. Para registrar resultados mais rápido durante o mata-mata, troque
 # para */10 ou */5 (gasta mais minutos).
@@ -33,17 +31,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Disparar /tarefas/sync
-        env:
-          SYNC_URL: ${{ vars.SYNC_URL }}
-          SYNC_TOKEN: ${{ secrets.SYNC_TOKEN }}
         run: |
-          if [ -z "$SYNC_URL" ] || [ -z "$SYNC_TOKEN" ]; then
-            echo "::error::Defina a Variable SYNC_URL e o Secret SYNC_TOKEN no repositório."
-            exit 1
-          fi
           curl --fail --silent --show-error --location --max-time 120 \
             -X POST \
-            -H "X-Sync-Token: $SYNC_TOKEN" \
-            "${SYNC_URL%/}/tarefas/sync"
+            "https://copa-phibra.onrender.com/tarefas/sync"
           echo ""
           echo "sync disparado."
