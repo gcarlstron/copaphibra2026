@@ -172,7 +172,14 @@ def parse_eventos(payload: dict) -> list[EventoEspn]:
             status_type = comp.get("status", {}).get("type", {})
             status_name: str = status_type.get("name", "") or ""
             estado: str = status_type.get("state", "") or ""
-            encerrado = status_name == ESPN_STATUS_FULL_TIME
+            # `completed` é o sinal canônico de "o jogo terminou": cobre FULL_TIME e
+            # também os finais do mata-mata — prorrogação (STATUS_FINAL_AET) e
+            # pênaltis (STATUS_FINAL_PEN) — que a fase de grupos nunca via. Sem isso,
+            # um jogo decidido nos pênaltis ficava preso como "agendado". Fallback por
+            # nome para payloads sem o campo (testes/legados). O placar do competidor é
+            # o do tempo normal/prorrogação; os pênaltis vêm em `shootoutScore` à parte
+            # e NÃO entram na pontuação (o bolão pontua o placar — 1×1 = empate).
+            encerrado = bool(status_type.get("completed")) or status_name == ESPN_STATUS_FULL_TIME
 
             competitors = comp.get("competitors", [])
             if len(competitors) < 2:
