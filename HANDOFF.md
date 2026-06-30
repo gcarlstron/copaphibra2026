@@ -25,10 +25,9 @@ Este documento resume o estado atual do projeto para retomada por outra IA ou po
 ## Próxima Etapa / follow-ups em aberto
 
 - **Conta `admin` aparece na classificação** (com 0 pts) — `montar_dashboard` inclui todos os usuários ativos. Decidir: excluir contas `is_admin` do ranking (provável) — ajuste pequeno em `services/dashboard.py`.
-- **Segurança (pendente desde o deploy inicial):** trocar a senha do `admin` (`admin123`) via Admin → Usuários; rotacionar a senha do banco na Neon (foi compartilhada em texto na conversa) e atualizar `DATABASE_URL` no Render.
+- **Segurança — RESOLVIDO (2026-06-30):** senha do `admin` trocada; senha do banco na Neon rotacionada e `DATABASE_URL` atualizado no Render.
 - (Opcional) escudos pequenos nas listas do dashboard (exigiria expor `escudo_url` em `JogoResumoView`).
 - **Nota:** há edição de `HANDOFF.md` (e possivelmente `TASKS.md`) não commitada ao fim desta sessão — commitar/pushar na retomada.
-- Pós-deploy ainda pendente: trocar senha do `admin` (`admin123`); rotacionar a senha do banco na Neon (foi compartilhada em texto).
 - Possível próximo: indicador "última atualização" no dashboard (Fase 10g, opcional); limpar follow-ups técnicos abaixo.
 
 ### Arquitetura da Fase 10 (para quem continuar)
