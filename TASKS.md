@@ -130,7 +130,7 @@ _Follow-ups do QA (não bloqueantes, ver HANDOFF):_
 - [x] ✅ Banco Neon criado, migrado e populado (admin + 10 jogadores + 3 rodadas + 72 jogos + 480 palpites; totais conferem) — 2026-06-18
 - [x] ✅ Fix de portabilidade da migração (boolean `sa.false()/sa.true()`) para o Postgres da Neon — 2026-06-18
 - [x] ✅ Web service no Render criado e no ar (Blueprint + `DATABASE_URL` da Neon), testado — 2026-06-19
-- [ ] Pós-deploy: trocar senha do `admin`; (recomendado) rotacionar a senha do banco na Neon, pois foi compartilhada em texto
+- [x] ✅ Pós-deploy (segurança): senha do `admin` trocada; senha do banco na Neon rotacionada e `DATABASE_URL` atualizado no Render — 2026-06-30
 
 ---
 
