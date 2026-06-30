@@ -518,6 +518,13 @@ apareciam, **mesmo abrindo o site**. Diagnóstico ao vivo contra a Neon + ESPN:
   atualizados (env `SYNC_TOKEN`). → 2026-06-29
 - [x] ✅ **Correção de dados imediata:** `Brasil 2×1 Japão` registrado e `Alemanha` marcada ao vivo na
   Neon (via sync direto), enquanto o deploy não sobe. → 2026-06-29
+- [x] ✅ **Bug mata-mata: jogos de pênaltis/prorrogação não encerravam** (`app/services/espn.py`) — o sync
+  só tratava `STATUS_FULL_TIME` como encerrado, então jogos do KO decididos nos pênaltis
+  (`STATUS_FINAL_PEN`) ou na prorrogação (`STATUS_FINAL_AET`) ficavam presos como "agendado" e nunca
+  pontuavam (ex.: Alemanha 1×1 Paraguai e Holanda 1×1 Marrocos no R32). Passa a reconhecer encerrado por
+  `status.type.completed` (+ fallback por nome `STATUS_FINAL_*`). O placar pontuado é o do tempo
+  normal/prorrogação; pênaltis (`shootoutScore`) não entram na LEGENDA. Testes novos em `test_espn.py`.
+  Dados de produção conferidos contra a ESPN (5/5 KO OK, 10/10 palpites com pontos). → 2026-06-30
 - [x] ✅ **Endpoint `/tarefas/sync` aberto (remove o token)** — o cron do GitHub não conseguia ler o
   Secret (repo público; Secret/Variable de ambiente vinham vazios) e a complexidade não compensava num
   bolão interno de baixo risco. Removidos `SYNC_TOKEN`/`_verificar_token` do endpoint e do `config.py`,

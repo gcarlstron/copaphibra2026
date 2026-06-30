@@ -236,15 +236,21 @@ class TestMataMataFinais:
         assert ev.ao_vivo is False
         assert ev.gols_casa == 2 and ev.gols_visitante == 1
 
-    def test_completed_false_nao_encerrado(self) -> None:
-        """`completed=False` (ex.: ainda rolando) não é encerrado."""
+    def test_final_pen_sem_completed_ainda_encerrado(self) -> None:
+        """Fallback por nome: STATUS_FINAL_* é encerrado mesmo sem o campo `completed`."""
         ev = parse_eventos(_payload_final("STATUS_FINAL_PEN", False))[0]
-        assert ev.encerrado is False
+        assert ev.encerrado is True
 
     def test_full_time_sem_campo_completed_ainda_encerrado(self) -> None:
         """Fallback por nome: FULL_TIME sem o campo `completed` segue encerrado."""
         ev = parse_eventos(_payload_status("STATUS_FULL_TIME", "post"))[0]
         assert ev.encerrado is True
+
+    def test_jogo_ao_vivo_nao_encerrado(self) -> None:
+        """Garante que a detecção não marca jogo em andamento como encerrado."""
+        ev = parse_eventos(_payload_status("STATUS_FIRST_HALF", "in"))[0]
+        assert ev.encerrado is False
+        assert ev.ao_vivo is True
 
     def test_agendado_nao_ao_vivo(self) -> None:
         ev = parse_eventos(_payload_status("STATUS_SCHEDULED", "pre", None, None))[0]
