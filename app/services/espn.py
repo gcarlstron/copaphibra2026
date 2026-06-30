@@ -179,7 +179,7 @@ def parse_eventos(payload: dict) -> list[EventoEspn]:
             # nome para payloads sem o campo (testes/legados). O placar do competidor é
             # o do tempo normal/prorrogação; os pênaltis vêm em `shootoutScore` à parte
             # e NÃO entram na pontuação (o bolão pontua o placar — 1×1 = empate).
-            encerrado = bool(status_type.get("completed")) or status_name == ESPN_STATUS_FULL_TIME
+            encerrado = bool(status_type.get("completed")) or status_name == ESPN_STATUS_FULL_TIME or status_name.startswith("STATUS_FINAL_")
 
             competitors = comp.get("competitors", [])
             if len(competitors) < 2:
