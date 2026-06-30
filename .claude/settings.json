@@ -19,7 +19,14 @@
       "Bash(./.venv/Scripts/python.exe -m pytest -q)",
       "Bash(./.venv/Scripts/python.exe -c \"import app.main; from app.routers import auth, dashboard, palpites, jogos, admin; from app.services import espn, sync_resultados; print\\('import ok'\\)\")",
       "Bash(DEBUG=1 ./.venv/Scripts/python.exe -c \"import app.main; from app.routers import auth, dashboard, palpites, jogos, admin; from app.services import espn, sync_resultados; print\\('import ok'\\)\")",
-      "mcp__context7__query-docs"
+      "mcp__context7__query-docs",
+      "Bash(./.venv/Scripts/python.exe \"C:/Users/PHIBRA/AppData/Local/Temp/claude/c--Users-PHIBRA-source-repos-CopaPhibra/22d65ad5-20dc-49dc-8bec-03189593e997/scratchpad/inspect_espn_ko.py\")",
+      "Bash(./.venv/Scripts/python.exe -m ruff check app/models/jogo.py app/services/espn.py app/services/sync_resultados.py app/config.py tests/test_espn_mata_mata.py tests/test_sync_mata_mata.py)",
+      "Bash(./.venv/Scripts/python.exe -c \"from app.services.espn import FASES_MATA_MATA, fase_do_slug, buscar_scoreboard_range, EventoEspn, parse_eventos; print\\('OK'\\)\")",
+      "Bash(./.venv/Scripts/python.exe -c *)",
+      "Bash(./.venv/Scripts/python.exe -c \"from app.config import get_settings; s = get_settings\\(\\); print\\(s.espn_lookahead_dias\\); print\\('OK'\\)\")",
+      "Bash(./.venv/Scripts/python.exe -m pytest *)",
+      "Bash(./.venv/Scripts/python.exe -m pytest tests/test_espn.py tests/test_espn_mata_mata.py tests/test_sync_resultados.py tests/test_sync_mata_mata.py -q)"
     ]
   }
 }
