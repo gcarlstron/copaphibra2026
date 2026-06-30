@@ -195,6 +195,63 @@ class TestEstadoAoVivo:
         assert ev.ao_vivo is True
         assert ev.no_intervalo is True
 
+
+# ---------------------------------------------------------------------------
+# Finais do mata-mata (prorrogação / pênaltis) — `status.type.completed`
+# ---------------------------------------------------------------------------
+
+
+def _payload_final(name: str, completed: bool, gols_c: str = "1", gols_v: str = "1") -> dict:
+    """Payload de um jogo de mata-mata finalizado (com `completed` e `shootoutScore`)."""
+    return {
+        "events": [
+            {
+                "competitions": [
+                    {
+                        "status": {"type": {"name": name, "state": "post", "completed": completed}},
+                        "competitors": [
+                            {"homeAway": "home", "team": {"abbreviation": "GER"}, "score": gols_c, "shootoutScore": 3},
+                            {"homeAway": "away", "team": {"abbreviation": "PAR"}, "score": gols_v, "shootoutScore": 4},
+                        ],
+                    }
+                ]
+            }
+        ]
+    }
+
+
+class TestMataMataFinais:
+    def test_final_penaltis_encerrado(self) -> None:
+        """Jogo decidido nos pênaltis (STATUS_FINAL_PEN) conta como encerrado."""
+        ev = parse_eventos(_payload_final("STATUS_FINAL_PEN", True))[0]
+        assert ev.encerrado is True
+        assert ev.ao_vivo is False
+        # Placar do tempo normal; pênaltis (shootoutScore) ficam fora da pontuação.
+        assert ev.gols_casa == 1 and ev.gols_visitante == 1
+
+    def test_final_prorrogacao_encerrado(self) -> None:
+        """Jogo decidido na prorrogação (STATUS_FINAL_AET) conta como encerrado."""
+        ev = parse_eventos(_payload_final("STATUS_FINAL_AET", True, gols_c="2", gols_v="1"))[0]
+        assert ev.encerrado is True
+        assert ev.ao_vivo is False
+        assert ev.gols_casa == 2 and ev.gols_visitante == 1
+
+    def test_final_pen_sem_completed_ainda_encerrado(self) -> None:
+        """Fallback por nome: STATUS_FINAL_* é encerrado mesmo sem o campo `completed`."""
+        ev = parse_eventos(_payload_final("STATUS_FINAL_PEN", False))[0]
+        assert ev.encerrado is True
+
+    def test_full_time_sem_campo_completed_ainda_encerrado(self) -> None:
+        """Fallback por nome: FULL_TIME sem o campo `completed` segue encerrado."""
+        ev = parse_eventos(_payload_status("STATUS_FULL_TIME", "post"))[0]
+        assert ev.encerrado is True
+
+    def test_jogo_ao_vivo_nao_encerrado(self) -> None:
+        """Garante que a detecção não marca jogo em andamento como encerrado."""
+        ev = parse_eventos(_payload_status("STATUS_FIRST_HALF", "in"))[0]
+        assert ev.encerrado is False
+        assert ev.ao_vivo is True
+
     def test_agendado_nao_ao_vivo(self) -> None:
         ev = parse_eventos(_payload_status("STATUS_SCHEDULED", "pre", None, None))[0]
         assert ev.ao_vivo is False
