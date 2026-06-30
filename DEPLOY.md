@@ -93,16 +93,13 @@ No free tier o serviço **hiberna** e o sync só rodava em visitas ao dashboard 
 estava no site na hora do jogo, o resultado não entrava (e o `deadline` de 8s era curto demais no
 Render, fazendo o sync reivindicar o slot mas estourar antes de registrar). A correção (Fase 18):
 
-1. **Endpoint `POST /tarefas/sync`** roda o sync **sem deadline** (sempre completa), protegido por
-   token. Defina a env **`SYNC_TOKEN`** no Render (Environment) com um valor forte:
-   ```bash
-   python -c "import secrets; print(secrets.token_hex(32))"
-   ```
-2. **GitHub Actions** (`.github/workflows/sync-espn.yml`) bate nesse endpoint a cada 15 min. No
-   repositório (Settings → Secrets and variables → Actions):
-   - **Secret** `SYNC_TOKEN` = **o mesmo valor** definido no Render.
-   - **Variable** `SYNC_URL` = URL base do app (ex.: `https://copa-phibra.onrender.com`).
-   Dá para disparar manualmente em **Actions → Sync resultados ESPN → Run workflow**.
+1. **Endpoint `POST /tarefas/sync`** roda o sync **sem deadline** (sempre completa). É **aberto**
+   (sem token) de propósito: a ação é inofensiva — só dispara a leitura de resultados da ESPN, com
+   throttle, e não injeta/altera/apaga dados. Como o repositório é público, um token só protegeria
+   se fosse um Secret de verdade; para um bolão interno não vale a complexidade. Nada a configurar.
+2. **GitHub Actions** (`.github/workflows/sync-espn.yml`) bate nesse endpoint a cada 15 min. A URL do
+   app está **fixa no workflow** — se a URL do Render mudar, edite-a no `.yml`. Sem Secrets/Variables
+   a configurar. Dá para disparar manualmente em **Actions → Sync resultados ESPN → Run workflow**.
 3. **Custo/duração:** repositório privado tem ~2000 min/mês grátis de Actions; `*/15` ≈ 96 runs/dia
    (~1 min cada). A Copa é finita — **desabilite o workflow após a Final (19/07)**. Para registrar
    mais rápido no mata-mata, troque o cron para `*/10` ou `*/5` (gasta mais minutos).

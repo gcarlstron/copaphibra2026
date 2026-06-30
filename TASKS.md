@@ -518,9 +518,14 @@ apareciam, **mesmo abrindo o site**. Diagnóstico ao vivo contra a Neon + ESPN:
   atualizados (env `SYNC_TOKEN`). → 2026-06-29
 - [x] ✅ **Correção de dados imediata:** `Brasil 2×1 Japão` registrado e `Alemanha` marcada ao vivo na
   Neon (via sync direto), enquanto o deploy não sobe. → 2026-06-29
-- [ ] **Deploy:** merge p/ `main` → Render builda. **Antes/depois:** definir `SYNC_TOKEN` na env do Render
-  e o Secret `SYNC_TOKEN` + Variable `SYNC_URL` no GitHub. (Opcional imediato: subir `ESPN_SYNC_DEADLINE_S`
-  na env do Render já dá fôlego sem esperar o deploy.)
+- [x] ✅ **Endpoint `/tarefas/sync` aberto (remove o token)** — o cron do GitHub não conseguia ler o
+  Secret (repo público; Secret/Variable de ambiente vinham vazios) e a complexidade não compensava num
+  bolão interno de baixo risco. Removidos `SYNC_TOKEN`/`_verificar_token` do endpoint e do `config.py`,
+  URL do app fixada no workflow (sem `secrets.`/`vars.`), `render.yaml`/`.env.example`/`DEPLOY.md`
+  atualizados, testes reescritos (200 + sem header). → 2026-06-30
+- [ ] **Deploy:** merge p/ `main` → Render builda. Nada de Secrets/Variables no GitHub. (Opcional imediato:
+  subir `ESPN_SYNC_DEADLINE_S` na env do Render já dá fôlego sem esperar o deploy.) Pode remover a env
+  `SYNC_TOKEN` do Render — não é mais usada.
 
 ---
 

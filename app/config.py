@@ -17,10 +17,6 @@ class Settings:
 
     session_https_only: bool = os.getenv("SESSION_HTTPS_ONLY", "0") == "1"
 
-    # Token do endpoint de sync acionado por agendador externo (GitHub Actions).
-    # Vazio = endpoint desabilitado (responde 503). Defina em produção.
-    sync_token: str = os.getenv("SYNC_TOKEN", "")
-
     espn_sync_intervalo_min: int = int(os.getenv("ESPN_SYNC_INTERVALO_MIN", "15"))
     # Intervalo curto usado quando há jogo ao vivo (ou recém-iniciado) — busca
     # quase em tempo real enquanto a bola rola.
